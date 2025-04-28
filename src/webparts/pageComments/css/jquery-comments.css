@@ -271,14 +271,14 @@ http://viima.github.io/jquery-comments/*/
 }
 /*Karuna Update Start*/
 .jquery-comments ul.main li.comment .actions>* {
-    color: #2a7386 !important;
+    color: #2a7386 ;
     font-weight: 700;
 }
 .jquery-comments ul.navigation li.active, .jquery-comments ul.navigation li:hover {
     color:  #2a7386 !important;
 }
 .jquery-comments .highlight-background {
-    background: #079246  !important;
+    background: #079246  ;
 }
 
 /*Karuna Update End*/
@@ -329,7 +329,7 @@ http://viima.github.io/jquery-comments/*/
 	height: 2px;
 	/*Karuna Update Start
 	background: #000;*/
-	background: #2a7386  !important;
+	background: #2a7386 ;
 	position: absolute;
 	bottom: -2px;
 	left: 0;
@@ -563,7 +563,7 @@ http://viima.github.io/jquery-comments/*/
 .jquery-comments ul.main li.comment .wrapper .content {
 	white-space: pre-line;
 	word-break: break-word;
-	color: #2a7386 !important;/*Karuna Update Start*/
+	color: #2a7386 ;/*Karuna Update Start*/
 }
 
 
@@ -598,10 +598,21 @@ http://viima.github.io/jquery-comments/*/
 	font-size: 1em;
 }
 
-.jquery-comments ul.main li.comment .actions > * {
+/* Make only non-liked icons gray by default */
+.jquery-comments ul.main li.comment .actions> .like {
+    color: #999 !important; /* gray */
+    font-weight: bold;
+    transition: color 0.3s ease;
+}
+
+/* When active (clicked), make them green */
+.jquery-comments ul.main li.comment .actions > .like.active {
+    color: #2a7386 ; /* green */
+}
+/* .jquery-comments ul.main li.comment .actions > * {
 	color: #999;
 	font-weight: bold;
-}
+} */
 
 .jquery-comments ul.main li.comment .actions .action {
 	display: inline-block;
@@ -634,7 +645,7 @@ http://viima.github.io/jquery-comments/*/
 
 .jquery-comments ul.main li.comment .actions .action:not(.upvote):hover,
 .jquery-comments ul.main li.comment .actions .action.upvote:not(.highlight-font) i:hover {
-	color: #666;
+	color: #666 !important;
 }
 
 .jquery-comments ul.main li.comment .actions .action.delete {
@@ -811,3 +822,11 @@ http://viima.github.io/jquery-comments/*/
     font-weight: 500;
     width: 100%;
 }
+
+
+
+  
+  
+  
+ 
+  
