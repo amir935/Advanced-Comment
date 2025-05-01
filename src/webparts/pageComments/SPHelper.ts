@@ -10,6 +10,11 @@ import "@pnp/sp/site-users/web";
 import { IList } from "@pnp/sp/lists";
 import * as _ from "lodash";
 
+
+type VoteUser = { userid: number; name: string };
+type VoteEntry = { commentID: number; userVote: VoteUser[] };
+
+
 export default class SPHelper {
   private lst_pageComments: string = "";
   private lst_pageDocuments: string = "";
@@ -405,6 +410,7 @@ export default class SPHelper {
   //   }
   // };
 
+
   public voteComment = async (pageurl, commentJson, currentUserInfo) => {
     const res = await this._list.items
       .select("Likes", "FieldValuesAsText/Likes")
@@ -425,11 +431,13 @@ export default class SPHelper {
       );
 
       if (commentJson.user_has_upvoted && !hasVoted) {
+
         voteEntry.userVote.push({
           userid: currentUserInfo.ID,
           name: currentUserInfo.DisplayName,
         });
       }
+
 
       if (!commentJson.user_has_upvoted && hasVoted) {
         voteEntry.userVote = voteEntry.userVote.filter(
@@ -438,6 +446,7 @@ export default class SPHelper {
       }
     } else if (commentJson.user_has_upvoted) {
       jsonLikes.push({
+
         commentID: commentJson.id,
         userVote: [
           {
@@ -448,12 +457,15 @@ export default class SPHelper {
       });
     }
 
+
     if (jsonLikes.length > 0) {
       return await this.updateVoteForComment(pageurl, jsonLikes);
     }
 
     return await this.addVoteForComment(pageurl, commentJson, currentUserInfo);
   };
+
+
 
   public deleteComment = async (pageurl, commentJson) => {
     let comments = await this.getComment(pageurl);

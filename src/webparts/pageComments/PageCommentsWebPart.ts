@@ -325,53 +325,7 @@ export default class PageCommentsWebPart extends BaseClientSideWebPart<IPageComm
           ($("#page-comments") as any).comments("refresh");
         },
 
-        // 🆕 Add this new block here
-        // customActions: function(comment: any) {
-        //   var actions = [];
-
-        //   if (self.properties.enableDeleting && !comment.isEditing) { // 🛠 Add !comment.isEditing check
-        //     actions.push({
-        //       name: 'Delete',
-        //       icon: 'fa fa-trash',
-        //       callback: function() {
-        //         if (confirm('Are you sure you want to delete this comment?')) {
-        //           ($('#page-comments') as any).comments('deleteComment', comment.id);
-        //         }
-        //       }
-        //     });
-        //   }
-
-        //   return actions;
-        // }
-
-        customActions: function (comment) {
-          var actions = [];
-
-          // 🆕 Detect if editing by checking DOM
-          var isEditingNow =
-            $("#" + comment.id).find(".jc-edit-box").length > 0;
-
-          if (
-            self.properties.enableDeleting &&
-            !isEditingNow &&
-            this.isAllowedToDelete(comment.id)
-          ) {
-            actions.push({
-              name: "Delete",
-              icon: "fa fa-trash",
-              callback: function () {
-                if (confirm("Are you sure you want to delete this comment?")) {
-                  ($("#page-comments") as any).comments(
-                    "deleteComment",
-                    comment.id
-                  );
-                }
-              },
-            });
-          }
-
-          return actions;
-        },
+        
       });
     });
   };
