@@ -110,8 +110,80 @@ export default class SPHelper {
     else return false;
   };
 
-  public getPostComments = async (pageurl, currentUserInfo) => {
-    let pagecomments = await this._list.items
+  // public getPostComments = async (pageurl, currentUserInfo, commentJson = null) => {
+  //   // Get item from SharePoint
+  //   let pagecomments = await this._list.items
+  //     .select("Comments", "Likes", "FieldValuesAsText/Comments", "FieldValuesAsText/Likes")
+  //     .filter(`PageURL eq '${pageurl}'`)
+  //     .expand("FieldValuesAsText")
+  //     .get();
+
+  //   if (pagecomments.length === 0) return [];
+
+  //   // Parse raw JSON from SharePoint fields
+  //   let tempComments = pagecomments[0].FieldValuesAsText.Comments;
+  //   let tempLikes = pagecomments[0].FieldValuesAsText.Likes;
+
+  //   let jsonComments = tempComments ? JSON.parse(tempComments) : [];
+  //   let jsonLikes = tempLikes ? JSON.parse(tempLikes) : [];
+
+  //   // 🔁 If commentJson is passed in (e.g., vote button clicked), update likes
+  //   if (commentJson) {
+  //     let voteEntry = _.find(jsonLikes, (l) => l.commentID === commentJson.id);
+
+  //     if (voteEntry) {
+  //       let userVoteIndex = _.findIndex(voteEntry.userVote, (o:any) => o.userid === currentUserInfo.ID);
+  //       let userAlreadyVoted = userVoteIndex !== -1;
+
+  //       if (commentJson.user_has_upvoted) {
+  //         if (!userAlreadyVoted) {
+  //           voteEntry.userVote.push({
+  //             userid: currentUserInfo.ID,
+  //             name: currentUserInfo.DisplayName
+  //           });
+  //         }
+  //       } else {
+  //         if (userAlreadyVoted) {
+  //           voteEntry.userVote.splice(userVoteIndex, 1);
+  //         }
+  //       }
+  //     } else {
+  //       // No existing entry for this comment → create one if upvoted
+  //       if (commentJson.user_has_upvoted) {
+  //         jsonLikes.push({
+  //           commentID: commentJson.id,
+  //           userVote: [
+  //             {
+  //               userid: currentUserInfo.ID,
+  //               name: currentUserInfo.DisplayName
+  //             }
+  //           ]
+  //         });
+  //       }
+  //     }
+
+  //     // Save the updated likes to SharePoint
+  //     await this.updateVoteForComment(pageurl, jsonLikes);
+  //   }
+
+  //   // 🧠 Attach vote data (like count and user_has_upvoted) to each comment
+  //   jsonLikes.forEach((likeEntry) => {
+  //     let comment = _.find(jsonComments, (c) => c.id === likeEntry.commentID);
+  //     if (comment) {
+  //       comment.upvote_count = likeEntry.userVote.length;
+  //       comment.user_has_upvoted = !!_.find(likeEntry.userVote, (v) => v.userid === currentUserInfo.ID);
+  //     }
+  //   });
+
+  //   return jsonComments;
+  // };
+
+  public getPostComments = async (
+    pageurl,
+    currentUserInfo,
+    commentJson = null
+  ) => {
+    const res = await this._list.items
       .select(
         "Comments",
         "Likes",
@@ -121,36 +193,63 @@ export default class SPHelper {
       .filter(`PageURL eq '${pageurl}'`)
       .expand("FieldValuesAsText")
       .get();
-    if (pagecomments.length > 0) {
-      var tempComments = pagecomments[0].FieldValuesAsText.Comments;
-      var tempLikes = pagecomments[0].FieldValuesAsText.Likes;
-      if (tempLikes != undefined && tempLikes != null && tempLikes !== "")
-        tempLikes = JSON.parse(tempLikes);
-      else tempLikes = [];
-      if (
-        tempComments != undefined &&
-        tempComments != null &&
-        tempComments !== ""
-      ) {
-        var jsonComments = JSON.parse(tempComments);
-        if (tempLikes.length > 0) {
-          tempLikes.map((liked) => {
-            var fil = _.find(jsonComments, (o) => {
-              return o.id == liked.commentID;
-            });
-            if (fil !== undefined && fil !== null) {
-              fil.upvote_count = liked.userVote.length;
-              var cufil = _.find(liked.userVote, (o) => {
-                return o.userid == currentUserInfo.ID;
-              });
-              if (cufil !== undefined && cufil !== null)
-                fil.user_has_upvoted = true;
-            }
+
+    if (res.length === 0) return [];
+
+    const rawComments = res[0].FieldValuesAsText.Comments;
+    const rawLikes = res[0].FieldValuesAsText.Likes;
+
+    const jsonComments = rawComments ? JSON.parse(rawComments) : [];
+    const jsonLikes = rawLikes ? JSON.parse(rawLikes) : [];
+
+    // 🔁 If vote request is passed in
+    if (commentJson) {
+      let voteEntry = jsonLikes.find((l) => l.commentID === commentJson.id);
+
+      if (voteEntry) {
+        const hasVoted = voteEntry.userVote.some(
+          (v) => v.userid === currentUserInfo.ID
+        );
+
+        if (commentJson.user_has_upvoted && !hasVoted) {
+          voteEntry.userVote.push({
+            userid: currentUserInfo.ID,
+            name: currentUserInfo.DisplayName,
           });
         }
-        return jsonComments;
-      } else return [];
-    } else return [];
+
+        if (!commentJson.user_has_upvoted && hasVoted) {
+          voteEntry.userVote = voteEntry.userVote.filter(
+            (v) => v.userid !== currentUserInfo.ID
+          );
+        }
+      } else if (commentJson.user_has_upvoted) {
+        jsonLikes.push({
+          commentID: commentJson.id,
+          userVote: [
+            {
+              userid: currentUserInfo.ID,
+              name: currentUserInfo.DisplayName,
+            },
+          ],
+        });
+      }
+
+      await this.updateVoteForComment(pageurl, jsonLikes);
+    }
+
+    // ➕ Add upvote_count and user_has_upvoted to each comment
+    jsonLikes.forEach((likeEntry) => {
+      const comment = jsonComments.find((c) => c.id === likeEntry.commentID);
+      if (comment) {
+        comment.upvote_count = likeEntry.userVote.length;
+        comment.user_has_upvoted = likeEntry.userVote.some(
+          (v) => v.userid === currentUserInfo.ID
+        );
+      }
+    });
+
+    return jsonComments;
   };
 
   public getComment = async (pageurl) => {
@@ -240,70 +339,120 @@ export default class SPHelper {
     }
   };
 
+  // public voteComment = async (pageurl, commentJson, currentUserInfo) => {
+  //   let res = await this._list.items
+  //     .select("Likes", "FieldValuesAsText/Likes")
+  //     .filter(`PageURL eq '${pageurl}'`)
+  //     .expand("FieldValuesAsText")
+  //     .get();
+  //   if (res.length > 0) {
+  //     var tempLikes = res[0].FieldValuesAsText.Likes;
+  //     if (tempLikes != undefined && tempLikes != null && tempLikes !== "") {
+  //       // Likes already exits so update the item
+  //       var jsonLikes = JSON.parse(tempLikes);
+  //       var userAlreadyVoted = _.find(jsonLikes, (o) => {
+  //         return (
+  //           o.commentID == commentJson.id &&
+  //           _.find(o.userVote, (oo) => {
+  //             return oo.userid == currentUserInfo.ID;
+  //           })
+  //         );
+  //       });
+  //       var userPresent =
+  //         userAlreadyVoted === undefined || userAlreadyVoted == null
+  //           ? false
+  //           : true;
+  //       var fil = _.find(jsonLikes, (o) => {
+  //         return o.commentID == commentJson.id;
+  //       });
+  //       if (fil !== undefined && fil !== null) {
+  //         // Found likes for the comment id
+  //         if (commentJson.user_has_upvoted) {
+  //           if (!userPresent)
+  //             fil.userVote = _.concat(fil.userVote, {
+  //               userid: currentUserInfo.ID,
+  //               name: currentUserInfo.DisplayName,
+  //             });
+  //         } else {
+  //           if (userPresent) {
+  //             if (fil !== undefined && fil !== null)
+  //               _.remove(fil.userVote, (o) => {
+  //                 return o["userid"] == currentUserInfo.ID;
+  //               });
+  //           }
+  //         }
+  //       } else {
+  //         // No likes found for the comment id
+  //         jsonLikes.push({
+  //           commentID: commentJson.id,
+  //           userVote: [
+  //             { userid: currentUserInfo.ID, name: currentUserInfo.DisplayName },
+  //           ],
+  //         });
+  //       }
+  //       return await this.updateVoteForComment(pageurl, jsonLikes);
+  //     } else {
+  //       // Likes doesn't exists so add new
+  //       if (commentJson.user_has_upvoted)
+  //         return await this.addVoteForComment(
+  //           pageurl,
+  //           commentJson,
+  //           currentUserInfo
+  //         );
+  //     }
+  //   } else {
+  //     return commentJson;
+  //   }
+  // };
+
   public voteComment = async (pageurl, commentJson, currentUserInfo) => {
-    let res = await this._list.items
+    const res = await this._list.items
       .select("Likes", "FieldValuesAsText/Likes")
       .filter(`PageURL eq '${pageurl}'`)
       .expand("FieldValuesAsText")
       .get();
-    if (res.length > 0) {
-      var tempLikes = res[0].FieldValuesAsText.Likes;
-      if (tempLikes != undefined && tempLikes != null && tempLikes !== "") {
-        // Likes already exits so update the item
-        var jsonLikes = JSON.parse(tempLikes);
-        var userAlreadyVoted = _.find(jsonLikes, (o) => {
-          return (
-            o.commentID == commentJson.id &&
-            _.find(o.userVote, (oo) => {
-              return oo.userid == currentUserInfo.ID;
-            })
-          );
+
+    if (res.length === 0) return commentJson;
+
+    const rawLikes = res[0].FieldValuesAsText.Likes;
+    const jsonLikes = rawLikes ? JSON.parse(rawLikes) : [];
+
+    let voteEntry = jsonLikes.find((l) => l.commentID === commentJson.id);
+
+    if (voteEntry) {
+      const hasVoted = voteEntry.userVote.some(
+        (v) => v.userid === currentUserInfo.ID
+      );
+
+      if (commentJson.user_has_upvoted && !hasVoted) {
+        voteEntry.userVote.push({
+          userid: currentUserInfo.ID,
+          name: currentUserInfo.DisplayName,
         });
-        var userPresent =
-          userAlreadyVoted === undefined || userAlreadyVoted == null
-            ? false
-            : true;
-        var fil = _.find(jsonLikes, (o) => {
-          return o.commentID == commentJson.id;
-        });
-        if (fil !== undefined && fil !== null) {
-          // Found likes for the comment id
-          if (commentJson.user_has_upvoted) {
-            if (!userPresent)
-              fil.userVote = _.concat(fil.userVote, {
-                userid: currentUserInfo.ID,
-                name: currentUserInfo.DisplayName,
-              });
-          } else {
-            if (userPresent) {
-              if (fil !== undefined && fil !== null)
-                _.remove(fil.userVote, (o) => {
-                  return o["userid"] == currentUserInfo.ID;
-                });
-            }
-          }
-        } else {
-          // No likes found for the comment id
-          jsonLikes.push({
-            commentID: commentJson.id,
-            userVote: [
-              { userid: currentUserInfo.ID, name: currentUserInfo.DisplayName },
-            ],
-          });
-        }
-        return await this.updateVoteForComment(pageurl, jsonLikes);
-      } else {
-        // Likes doesn't exists so add new
-        if (commentJson.user_has_upvoted)
-          return await this.addVoteForComment(
-            pageurl,
-            commentJson,
-            currentUserInfo
-          );
       }
-    } else {
-      return commentJson;
+
+      if (!commentJson.user_has_upvoted && hasVoted) {
+        voteEntry.userVote = voteEntry.userVote.filter(
+          (v) => v.userid !== currentUserInfo.ID
+        );
+      }
+    } else if (commentJson.user_has_upvoted) {
+      jsonLikes.push({
+        commentID: commentJson.id,
+        userVote: [
+          {
+            userid: currentUserInfo.ID,
+            name: currentUserInfo.DisplayName,
+          },
+        ],
+      });
     }
+
+    if (jsonLikes.length > 0) {
+      return await this.updateVoteForComment(pageurl, jsonLikes);
+    }
+
+    return await this.addVoteForComment(pageurl, commentJson, currentUserInfo);
   };
 
   public deleteComment = async (pageurl, commentJson) => {
