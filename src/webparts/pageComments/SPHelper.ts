@@ -11,8 +11,7 @@ import { IList } from "@pnp/sp/lists";
 import * as _ from "lodash";
 
 
-type VoteUser = { userid: number; name: string };
-type VoteEntry = { commentID: number; userVote: VoteUser[] };
+
 
 
 export default class SPHelper {
