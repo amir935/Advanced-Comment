@@ -24,7 +24,6 @@ require("textcomplete");
 import { sp } from "@pnp/sp";
 import SPHelper from "./SPHelper";
 require("./css/jquery-comments.css");
-import * as $ from "jquery";
 
 export interface IPageCommentsWebPartProps {
   enableNavigation: boolean;
