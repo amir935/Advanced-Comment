@@ -123,14 +123,7 @@
       };
     },
 
-    createCommentModel: function (commentJSON) {
-      var commentModel = this.applyInternalMappings(commentJSON);
-      commentModel.childs = [];
-      if (typeof commentModel.userHasUpvoted === 'undefined') {
-        commentModel.userHasUpvoted = false;
-      }
-      return commentModel;
-    },
+  
 
     createUpvoteElement: function (commentModel) {
       var likeIcon = $("<i/>", { class: "fa fa-thumbs-up like" });
@@ -161,6 +154,8 @@
         $(commentEl).find(".upvote").first().replaceWith(newUpvoteButton);
       });
     },
+
+
 
     applyInternalMappings: function (external) {
       const internal = {};
