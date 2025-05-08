@@ -122,15 +122,24 @@ export default class PageCommentsWebPart extends BaseClientSideWebPart<IPageComm
     this.siteUsers = await this.helper.getSiteUsers(self.currentUserInfo.ID);
 
     require(["jquery", "./js/jquery-comments.min"], (jQuery, comments) => {
+      const canEdit = self.properties.enableEditing;
+      const currentUserId = Number(self.currentUserInfo.ID) + 1;
+      const currentUserIsAdmin = Boolean(self.currentUserInfo.IsSiteAdmin);
+
       jQuery("#page-comments").comments({
         profilePictureURL: self.currentUserInfo.Picture,
-        currentUserId: self.currentUserInfo.ID,
-        currentUserIsAdmin: self.currentUserInfo.IsSiteAdmin,
+
+        currentUserId,
+        currentUserIsAdmin,
+        enableEditing: canEdit,
+
         enableNavigation: self.properties.enableNavigation,
         enableReplying: self.properties.enableReplying,
-        enableEditing: self.properties.enableEditing,
-        enableUpvoting: self.properties.enableUpvoting,
         enableDeleting: self.properties.enableDeleting,
+        enableDeletingCommentWithReplies:
+          self.properties.enableDeletingCommentWithReplies,
+        enableUpvoting: self.properties.enableUpvoting,
+
         enableAttachments: self.properties.enableAttachments,
         enableHashtags: self.properties.enableHashtags,
         enablePinging: self.properties.enablePinging,
@@ -159,6 +168,7 @@ export default class PageCommentsWebPart extends BaseClientSideWebPart<IPageComm
         },
 
         getComments: async (success, error) => {
+          console.log("🧪 getComments stub, fakeCurrentUserId=", currentUserId);
           try {
             const commentsArray = await self.helper.getPostComments(
               self.pageurl,
@@ -171,8 +181,13 @@ export default class PageCommentsWebPart extends BaseClientSideWebPart<IPageComm
               ) {
                 comment.is_new = true;
               }
-              comment.created_by_current_user =
-                comment.userid === self.currentUserInfo.ID;
+
+              const isOwner = false; // comment.created_by_current_user =
+              //comment.userid === self.currentUserInfo.ID;
+              const isAdmin = self.currentUserInfo.IsSiteAdmin === true;
+
+              comment.created_by_current_user = isOwner || isAdmin;
+              console.log(self.currentUserInfo.IsSiteAdmin);
             });
             success(commentsArray);
           } catch (err) {
@@ -199,38 +214,62 @@ export default class PageCommentsWebPart extends BaseClientSideWebPart<IPageComm
           commentJson.created_by_current_user = true;
           success(commentJson);
         },
-
         putComment: async (commentJSON, success, error) => {
           console.log("Current user ROLE:", self.currentUserInfo);
 
           commentJSON = self.saveComment(commentJSON);
-
           commentJSON.userid = self.currentUserInfo.ID;
           commentJSON.fullname = self.currentUserInfo.DisplayName;
 
-          const isOwner =
-            parseInt(commentJSON.userid) === parseInt(self.currentUserInfo.ID);
-          const isAdmin = self.currentUserInfo.IsSiteAdmin === true;
-
-          if (!isOwner && !isAdmin) {
-            console.warn("Edit denied: user is not the comment owner or admin");
-            error("You are not allowed to edit this comment.");
-            return;
+          try {
+            const result = await self.helper.editComments(
+              self.pageurl,
+              commentJSON,
+              self.currentUserInfo
+            );
+            if (result && typeof result === "object" && "error" in result) {
+              error(result.error as string);
+              return;
+            }
+            success(commentJSON);
+          } catch (e) {
+            console.error("Error editing comment:", e);
+            error("An error occurred while editing your comment.");
           }
-
-          const result = await self.helper.editComments(
-            self.pageurl,
-            commentJSON,
-            self.currentUserInfo
-          );
-
-          if (result && typeof result === "object" && "error" in result) {
-            error(result.error);
-            return;
-          }
-
-          success(commentJSON);
         },
+
+        // putComment: async (commentJSON, success, error) => {
+        //   console.log("Current user ROLE:", self.currentUserInfo);
+
+        //   commentJSON = self.saveComment(commentJSON);
+
+        //   commentJSON.userid = self.currentUserInfo.ID;
+        //   commentJSON.fullname = self.currentUserInfo.DisplayName;
+
+        //   const isOwner =
+        //     parseInt(commentJSON.userid) !== parseInt(self.currentUserInfo.ID);
+
+        //   const isAdmin = self.currentUserInfo.IsSiteAdmin === false;
+
+        //   if (!isOwner && !isAdmin) {
+        //     console.warn("Edit denied: user is not the comment owner or admin");
+        //     error("You are not allowed to edit this comment.");
+        //     return;
+        //   }
+
+        //   const result = await self.helper.editComments(
+        //     self.pageurl,
+        //     commentJSON,
+        //     self.currentUserInfo
+        //   );
+
+        //   if (result && typeof result === "object" && "error" in result) {
+        //     error(result.error);
+        //     return;
+        //   }
+
+        //   success(commentJSON);
+        // },
         deleteComment: async (commentJSON, success, error) => {
           console.log("Comment userid:", commentJSON.userid);
           console.log("Current user ID:", self.currentUserInfo.ID);

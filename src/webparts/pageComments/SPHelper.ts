@@ -55,7 +55,7 @@ export default class SPHelper {
       LoginName: currentUserInfo.LoginName,
       DisplayName: currentUserInfo.Title,
       Picture: `/_layouts/15/userphoto.aspx?size=S&username=${currentUserInfo.UserPrincipalName}`,
-      IsSiteAdmin: false, //currentUserInfo.IsSiteAdmin, // ✅ add this line
+      IsSiteAdmin: currentUserInfo.IsSiteAdmin,
     };
   };
 
@@ -70,7 +70,7 @@ export default class SPHelper {
       email: user.Email,
       profile_picture_url:
         "/_layouts/15/userphoto.aspx?size=S&username=" + user.UserPrincipalName,
-      IsSiteAdmin: false, //user.IsSiteAdmin,
+      IsSiteAdmin: true, //user.IsSiteAdmin,
     }));
   };
 
@@ -90,118 +90,76 @@ export default class SPHelper {
     return res.length > 0;
   };
 
-  // public getPostComments = async (pageurl, currentUserInfo, commentJson = null) => {
-  //   const res = await this._list.items
-  //     .select("Comments", "Likes", "FieldValuesAsText/Comments", "FieldValuesAsText/Likes")
-  //     .filter(`PageURL eq '${pageurl}'`)
-  //     .expand("FieldValuesAsText")
-  //     .get();
-
-  //   if (res.length === 0) return [];
-
-  //   const rawComments = res[0].FieldValuesAsText.Comments;
-  //   const rawLikes = res[0].FieldValuesAsText.Likes;
-
-  //   const jsonComments = rawComments ? JSON.parse(rawComments) : [];
-  //   const jsonLikes = rawLikes ? JSON.parse(rawLikes) : [];
-
-  //   // Handle upvote
-  //   if (commentJson) {
-  //     let voteEntry = jsonLikes.find((l) => l.commentID === commentJson.id);
-  //     const hasVoted = voteEntry?.userVote?.some((v) => v.userid === currentUserInfo.ID);
-
-  //     if (commentJson.user_has_upvoted && !hasVoted) {
-  //       if (voteEntry) {
-  //         voteEntry.userVote.push({
-  //           userid: currentUserInfo.ID,
-  //           name: currentUserInfo.DisplayName,
-  //         });
-  //       } else {
-  //         jsonLikes.push({
-  //           commentID: commentJson.id,
-  //           userVote: [
-  //             {
-  //               userid: currentUserInfo.ID,
-  //               name: currentUserInfo.DisplayName,
-  //             },
-  //           ],
-  //         });
-  //       }
-  //     } else if (!commentJson.user_has_upvoted && hasVoted) {
-  //       voteEntry.userVote = voteEntry.userVote.filter((v) => v.userid !== currentUserInfo.ID);
-  //     }
-
-  //     await this.updateVoteForComment(pageurl, jsonLikes);
-  //   }
-
-  //   // Enrich comments
-  //   jsonLikes.forEach((likeEntry) => {
-  //     const comment = jsonComments.find((c) => c.id === likeEntry.commentID);
-  //     if (comment) {
-  //       comment.upvote_count = likeEntry.userVote.length;
-  //       comment.user_has_upvoted = likeEntry.userVote.some((v) => v.userid === currentUserInfo.ID);
-  //     }
-  //   });
-
-  //   jsonComments.forEach((comment) => {
-  //     if (comment.userid === undefined || comment.userid === null) {
-  //       comment.userid = -1;
-  //     }
-  //     comment.created_by_current_user = comment.userid === currentUserInfo.ID;
-  //   });
-
-  //   return jsonComments;
-  // };
   public getPostComments = async (
-    pageurl: string,
-    currentUserInfo: any
-  ): Promise<any[]> => {
-    let res = await this._list.items
-      .select("Comments", "FieldValuesAsText/Comments", "Author/Title")
+    pageurl,
+    currentUserInfo,
+    commentJson = null
+  ) => {
+    const res = await this._list.items
+      .select(
+        "Comments",
+        "Likes",
+        "FieldValuesAsText/Comments",
+        "FieldValuesAsText/Likes"
+      )
       .filter(`PageURL eq '${pageurl}'`)
-      .expand("FieldValuesAsText", "Author")
-      .top(1)
+      .expand("FieldValuesAsText")
       .get();
 
-    if (!res || res.length === 0) return [];
+    if (res.length === 0) return [];
 
-    let comments: any[] = [];
-    const item = res[0];
+    const rawComments = res[0].FieldValuesAsText.Comments;
+    const rawLikes = res[0].FieldValuesAsText.Likes;
 
-    if (item.Comments) {
-      try {
-        comments = JSON.parse(item.Comments);
+    const jsonComments = rawComments ? JSON.parse(rawComments) : [];
+    const jsonLikes = rawLikes ? JSON.parse(rawLikes) : [];
 
-        // Fix missing userid or created_by_current_user
-        comments.forEach((comment: any) => {
-          // Ensure created timestamp is set
-          if (!comment.created) comment.created = new Date().toISOString();
+    if (commentJson) {
+      let voteEntry = jsonLikes.find((l) => l.commentID === commentJson.id);
 
-          // Assign fallback userid based on fullname match
-          if (
-            !comment.userid &&
-            comment.fullname === currentUserInfo.DisplayName
-          ) {
-            comment.userid = currentUserInfo.ID;
-          }
+      if (voteEntry) {
+        const hasVoted = voteEntry.userVote.some(
+          (v) => v.userid === currentUserInfo.ID
+        );
 
-          // Mark current user's own comments
-          comment.created_by_current_user =
-            comment.userid === currentUserInfo.ID;
+        if (commentJson.user_has_upvoted && !hasVoted) {
+          voteEntry.userVote.push({
+            userid: currentUserInfo.ID,
+            name: currentUserInfo.DisplayName,
+          });
+        }
 
-          // Make sure upvote fields are always present
-          comment.upvoteCount = comment.upvoteCount || 0;
-          comment.userHasUpvoted =
-            Array.isArray(comment.voters) &&
-            comment.voters.includes(currentUserInfo.ID);
+        if (!commentJson.user_has_upvoted && hasVoted) {
+          voteEntry.userVote = voteEntry.userVote.filter(
+            (v) => v.userid !== currentUserInfo.ID
+          );
+        }
+      } else if (commentJson.user_has_upvoted) {
+        jsonLikes.push({
+          commentID: commentJson.id,
+          userVote: [
+            {
+              userid: currentUserInfo.ID,
+              name: currentUserInfo.DisplayName,
+            },
+          ],
         });
-      } catch (err) {
-        console.warn("Error parsing Comments JSON:", err);
-        comments = [];
       }
+
+      await this.updateVoteForComment(pageurl, jsonLikes);
     }
 
-    return comments;
+    jsonLikes.forEach((likeEntry) => {
+      const comment = jsonComments.find((c) => c.id === likeEntry.commentID);
+      if (comment) {
+        comment.upvote_count = likeEntry.userVote.length;
+        comment.user_has_upvoted = likeEntry.userVote.some(
+          (v) => v.userid === currentUserInfo.ID
+        );
+      }
+    });
+
+    return jsonComments;
   };
 
   public getComment = async (pageurl) => {
