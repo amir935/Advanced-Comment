@@ -3,7 +3,7 @@ name: SPFx CI/CD Pipeline
 on:
   push:
     branches:
-      - master
+      - master  # or 'main' if your repo uses that
 
 jobs:
   build:
@@ -16,7 +16,7 @@ jobs:
       - name: 🔧 Setup Node.js
         uses: actions/setup-node@v3
         with:
-          node-version: "18.18.1"
+          node-version: '18.18.1'
 
       - name: 📦 Install Dependencies
         run: npm install
@@ -50,10 +50,6 @@ jobs:
           name: spfx-package
           path: sharepoint/solution/
 
-      - name: 🧰 Install PnP PowerShell
-        shell: pwsh
-        run: |
-          Install-Module -Name PnP.PowerShell -Force -AllowClobber -Scope CurrentUser
       - name: 🚀 Deploy SPFx App to App Catalog (PowerShell)
         shell: pwsh
         env:
@@ -62,22 +58,39 @@ jobs:
           TENANT_ID: ${{ secrets.TENANT_ID }}
           SPO_SITE_URL: ${{ secrets.SPO_SITE_URL }}
         run: |
-          Install-Module -Name PnP.PowerShell -Force -AllowClobber -Scope CurrentUser
+          Install-Module PnP.PowerShell -Force -AllowClobber -Scope CurrentUser
 
-          Write-Host "🌐 SPO_SITE_URL: $env:SPO_SITE_URL"
-          Write-Host "🔑 CLIENT_ID: $env:CLIENT_ID"
-          Write-Host "🏢 TENANT_ID: $env:TENANT_ID"
+          $url = $env:SPO_SITE_URL
+          $clientId = $env:CLIENT_ID
+          $clientSecret = $env:CLIENT_SECRET
+          $tenantId = $env:TENANT_ID
 
-          Connect-PnPOnline -Url $env:SPO_SITE_URL -ClientId $env:CLIENT_ID -ClientSecret $env:CLIENT_SECRET -Tenant $env:TENANT_ID
+          Write-Host "`n🧪 Verifying secrets..."
+          if (!$url -or !$clientId -or !$clientSecret -or !$tenantId) {
+            Write-Error "❌ One or more environment variables are empty. Please check GitHub secrets."
+            exit 1
+          }
+
+          Write-Host "🌐 SPO_SITE_URL: $url"
+          Write-Host "🔑 CLIENT_ID: $clientId"
+          Write-Host "🏢 TENANT_ID: $tenantId"
+
+          Write-Host "`n🔌 Connecting to SharePoint..."
+          Connect-PnPOnline -Url $url -ClientId $clientId -ClientSecret $clientSecret -Tenant $tenantId
+
+          Write-Host "✅ Connected to SharePoint."
 
           $appName = "advanced-comments-box"
           $package = Get-ChildItem "sharepoint/solution/*.sppkg" | Select-Object -First 1
+
+          Write-Host "🔍 Checking if app is already deployed..."
           $existingApp = Get-PnPApp | Where-Object { $_.Title -eq $appName }
 
           if ($existingApp -and $existingApp.Deployed) {
-            Write-Host "✅ App is already deployed. Skipping."
+            Write-Host "✅ App is already deployed. Skipping deployment."
             return
           }
 
           Write-Host "📦 Uploading and deploying app..."
           Add-PnPApp -Path $package.FullName -Scope Tenant -Publish -Overwrite
+          Write-Host "🚀 Deployment complete."
