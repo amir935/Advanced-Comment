@@ -55,7 +55,7 @@ export default class SPHelper {
       LoginName: currentUserInfo.LoginName,
       DisplayName: currentUserInfo.Title,
       Picture: `/_layouts/15/userphoto.aspx?size=S&username=${currentUserInfo.UserPrincipalName}`,
-      IsSiteAdmin: currentUserInfo.IsSiteAdmin,
+      IsSiteAdmin: false, //currentUserInfo.IsSiteAdmin,
     };
   };
 
@@ -70,7 +70,7 @@ export default class SPHelper {
       email: user.Email,
       profile_picture_url:
         "/_layouts/15/userphoto.aspx?size=S&username=" + user.UserPrincipalName,
-      IsSiteAdmin: true, //user.IsSiteAdmin,
+      IsSiteAdmin: false, //user.IsSiteAdmin,
     }));
   };
 

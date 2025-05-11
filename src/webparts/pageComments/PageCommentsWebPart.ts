@@ -182,7 +182,7 @@ export default class PageCommentsWebPart extends BaseClientSideWebPart<IPageComm
                 comment.is_new = true;
               }
 
-              const isOwner = false; // comment.created_by_current_user =
+              const isOwner = true; // comment.created_by_current_user =
               //comment.userid === self.currentUserInfo.ID;
               const isAdmin = self.currentUserInfo.IsSiteAdmin === true;
 
