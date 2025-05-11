@@ -3,7 +3,7 @@ name: SPFx CI/CD Pipeline
 on:
   push:
     branches:
-      - master # or 'main' if that's your default branch
+      - master
 
 jobs:
   build:
@@ -37,7 +37,7 @@ jobs:
           path: sharepoint/solution/advanced-comments-box.sppkg
 
   deploy:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest # Use Windows for PowerShell compatibility
     needs: build
 
     steps:
@@ -50,34 +50,31 @@ jobs:
           name: spfx-package
           path: sharepoint/solution/
 
-      - name: 🔧 Install Microsoft 365 CLI
-        run: npm install -g @pnp/cli-microsoft365
-
-      # - name: 🧰 Setup CLI Default App ID
-      #   run: m365 setup --appId 00000003-0000-0ff1-ce00-000000000000
-
-      - name: 🔐 M365 Login (Manual)
-        run: m365 login --authType password --userName "${{ secrets.ADMIN_USERNAME }}" --password "${{ secrets.ADMIN_PASSWORD }}"
-
-      - name: 🚀 Deploy SPFx App to App Catalog (only if not deployed)
-        shell: bash
+      - name: 🧰 Install PnP PowerShell
+        shell: pwsh
         run: |
-          APP_NAME="advanced-comments-box.sppkg"
-          FILE_PATH="sharepoint/solution/$APP_NAME"
-          APP_CATALOG_URL="${{ secrets.SPO_SITE_URL }}"
+          Install-Module -Name PnP.PowerShell -Force -AllowClobber -Scope CurrentUser
 
-          echo "🔍 Checking if app already deployed..."
-          DEPLOYED=$(m365 spo app list --appCatalogUrl "$APP_CATALOG_URL" --output json | jq -r --arg APP "$APP_NAME" '.[] | select(.Title==$APP) | .Deployed')
+      - name: 🚀 Deploy SPFx App to App Catalog (PowerShell)
+        shell: pwsh
+        env:
+          ADMIN_USERNAME: ${{ secrets.ADMIN_USERNAME }}
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+          SPO_SITE_URL: ${{ secrets.SPO_SITE_URL }}
+        run: |
+          $secpass = ConvertTo-SecureString $env:ADMIN_PASSWORD -AsPlainText -Force
+          $creds = New-Object System.Management.Automation.PSCredential($env:ADMIN_USERNAME, $secpass)
 
-          if [ "$DEPLOYED" == "true" ]; then
-            echo "✅ App is already deployed. Skipping."
-            exit 0
-          fi
+          Connect-PnPOnline -Url $env:SPO_SITE_URL -Credentials $creds
 
-          echo "📦 Uploading app..."
-          m365 spo app add --filePath "$FILE_PATH" --appCatalogUrl "$APP_CATALOG_URL" --overwrite
+          $appName = "advanced-comments-box"
+          $package = Get-ChildItem "sharepoint/solution/*.sppkg" | Select-Object -First 1
+          $existingApp = Get-PnPApp | Where-Object { $_.Title -eq $appName }
 
-          APP_ID=$(m365 spo app get --name "$APP_NAME" --appCatalogUrl "$APP_CATALOG_URL" --output json | jq -r ".UniqueId")
+          if ($existingApp -and $existingApp.Deployed) {
+            Write-Host "✅ App is already deployed. Skipping."
+            return
+          }
 
-          echo "🚀 Deploying app with ID: $APP_ID"
-          m365 spo app deploy --id "$APP_ID" --appCatalogUrl "$APP_CATALOG_URL" --skipFeatureDeployment
+          Write-Host "📦 Uploading and deploying app..."
+          Add-PnPApp -Path $package.FullName -Scope Tenant -Publish -Overwrite
