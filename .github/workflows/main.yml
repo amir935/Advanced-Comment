@@ -3,7 +3,7 @@ name: SPFx CI/CD Pipeline
 on:
   push:
     branches:
-      - master # or 'main' if you're using that
+      - master  # or 'main' if you're using that
 
 jobs:
   build:
@@ -56,6 +56,9 @@ jobs:
         with:
           ADMIN_USERNAME: ${{ secrets.ADMIN_USERNAME }}
           ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+
+      - name: 🧰 Setup M365 CLI default appId
+        run: m365 setup --appId 00000003-0000-0ff1-ce00-000000000000
 
       - name: 🚀 Deploy SPFx App to App Catalog
         run: |
