@@ -3,7 +3,7 @@ name: SPFx CI/CD Pipeline
 on:
   push:
     branches:
-      - master  # or 'main' if that's your default branch
+      - master # or 'main' if that's your default branch
 
 jobs:
   build:
@@ -16,7 +16,7 @@ jobs:
       - name: 🔧 Setup Node.js
         uses: actions/setup-node@v3
         with:
-          node-version: '18.18.1'
+          node-version: "18.18.1"
 
       - name: 📦 Install Dependencies
         run: npm install
@@ -53,8 +53,8 @@ jobs:
       - name: 🔧 Install Microsoft 365 CLI
         run: npm install -g @pnp/cli-microsoft365
 
-      - name: 🧰 Setup CLI Default App ID
-        run: m365 setup --appId 00000003-0000-0ff1-ce00-000000000000
+      # - name: 🧰 Setup CLI Default App ID
+      #   run: m365 setup --appId 00000003-0000-0ff1-ce00-000000000000
 
       - name: 🔐 M365 Login (Manual)
         run: m365 login --authType password --userName "${{ secrets.ADMIN_USERNAME }}" --password "${{ secrets.ADMIN_PASSWORD }}"
