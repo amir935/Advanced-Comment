@@ -1,72 +1,69 @@
-name: CI/CD Pipeline
+name: SPFx CI/CD Pipeline
 
 on:
   push:
     branches:
-      - master
-  pull_request:
-    branches:
-      - master
+      - master  # or 'main' if you're using that
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: 🧾 Checkout Code
         uses: actions/checkout@v2
 
-      - name: Set up Node.js
+      - name: 🔧 Setup Node.js
         uses: actions/setup-node@v3
         with:
-          node-version: "18.18.1"
+          node-version: '18.18.1'
 
-      - name: Install dependencies
+      - name: 📦 Install Dependencies
         run: npm install
 
-      - name: Run tests
-        run: npm test
+      - name: 🛠 Install Gulp
+        run: npm install gulp gulp-cli
 
-      - name: Build project
-        run: npm run build
+      - name: 🛠️ Bundle SPFx Code
+        run: gulp bundle --ship
 
-      - name: Package solution
+      - name: 📦 Package SPFx Solution
         run: gulp package-solution --ship
 
-      - name: Upload SharePoint package
-        uses: actions/upload-artifact@v4
+      - name: 💾 Upload SPPKG Artifact
+        uses: actions/upload-artifact@v3
         with:
-          name: advanced-comments-box-sppkg
+          name: spfx-package
           path: sharepoint/solution/advanced-comments-box.sppkg
 
   deploy:
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     needs: build
 
     steps:
-      - name: Checkout repository
+      - name: 🧾 Checkout Code
         uses: actions/checkout@v2
 
-      - name: Download SharePoint package
-        uses: actions/download-artifact@v4
+      - name: 📥 Download SharePoint Package
+        uses: actions/download-artifact@v3
         with:
-          name: advanced-comments-box-sppkg
+          name: spfx-package
           path: sharepoint/solution/
 
-      - name: Deploy to SharePoint
-        shell: pwsh
-        env:
-          SPO_SITE_URL: ${{ secrets.SPO_SITE_URL }}
-          SPO_CLIENT_ID: ${{ secrets.SPO_CLIENT_ID }}
-          SPO_CLIENT_SECRET: ${{ secrets.SPO_CLIENT_SECRET }}
+      - name: 🔐 M365 Login (Admin Credentials)
+        id: login
+        uses: pnp/action-cli-login@v2.2.1
+        with:
+          ADMIN_USERNAME: ${{ secrets.ADMIN_USERNAME }}
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+
+      - name: 🚀 Deploy SPFx App to App Catalog
         run: |
-          npm install -g @pnp/cli-microsoft365
+          m365 spo app add --filePath sharepoint/solution/advanced-comments-box.sppkg --appCatalogUrl ${{ secrets.SPO_SITE_URL }} --overwrite
 
-          m365 login --authType password --userName $env:SPO_CLIENT_ID --password $env:SPO_CLIENT_SECRET
+          APP_ID=$(m365 spo app get --name advanced-comments-box.sppkg --appCatalogUrl ${{ secrets.SPO_SITE_URL }} --output json | jq -r ".UniqueId")
 
-          m365 spo app add --filePath sharepoint/solution/advanced-comments-box.sppkg --appCatalogUrl $env:SPO_SITE_URL --overwrite
+          echo "Deploying app with ID: $APP_ID"
 
-          $appInfo = m365 spo app get --name advanced-comments-box.sppkg --appCatalogUrl $env:SPO_SITE_URL --output json | ConvertFrom-Json
-          $appId = $appInfo.UniqueId
-
-          m365 spo app deploy --id $appId --appCatalogUrl $env:SPO_SITE_URL --skipFeatureDeployment
+          m365 spo app deploy --id $APP_ID --appCatalogUrl ${{ secrets.SPO_SITE_URL }} --skipFeatureDeployment
+        shell: bash
