@@ -56,29 +56,29 @@ jobs:
           Install-Module -Name PnP.PowerShell -Force -AllowClobber -Scope CurrentUser
 
           - name: 🚀 Deploy SPFx App to App Catalog (PowerShell)
-          shell: pwsh
-          env:
-            CLIENT_ID: ${{ secrets.CLIENT_ID }}
-            CLIENT_SECRET: ${{ secrets.CLIENT_SECRET }}
-            TENANT_ID: ${{ secrets.TENANT_ID }}
-            SPO_SITE_URL: ${{ secrets.SPO_SITE_URL }}
-          run: |
-            Install-Module -Name PnP.PowerShell -Force -AllowClobber -Scope CurrentUser
+            shell: pwsh
+            env:
+              CLIENT_ID: ${{ secrets.CLIENT_ID }}
+              CLIENT_SECRET: ${{ secrets.CLIENT_SECRET }}
+              TENANT_ID: ${{ secrets.TENANT_ID }}
+              SPO_SITE_URL: ${{ secrets.SPO_SITE_URL }}
+            run: |
+              Install-Module -Name PnP.PowerShell -Force -AllowClobber -Scope CurrentUser
 
-            Write-Host "🌐 SPO_SITE_URL: $env:SPO_SITE_URL"
-            Write-Host "🔑 CLIENT_ID: $env:CLIENT_ID"
-            Write-Host "🏢 TENANT_ID: $env:TENANT_ID"
+              Write-Host "🌐 SPO_SITE_URL: $env:SPO_SITE_URL"
+              Write-Host "🔑 CLIENT_ID: $env:CLIENT_ID"
+              Write-Host "🏢 TENANT_ID: $env:TENANT_ID"
 
-            Connect-PnPOnline -Url $env:SPO_SITE_URL -ClientId $env:CLIENT_ID -ClientSecret $env:CLIENT_SECRET -Tenant $env:TENANT_ID
+              Connect-PnPOnline -Url $env:SPO_SITE_URL -ClientId $env:CLIENT_ID -ClientSecret $env:CLIENT_SECRET -Tenant $env:TENANT_ID
 
-            $appName = "advanced-comments-box"
-            $package = Get-ChildItem "sharepoint/solution/*.sppkg" | Select-Object -First 1
-            $existingApp = Get-PnPApp | Where-Object { $_.Title -eq $appName }
+              $appName = "advanced-comments-box"
+              $package = Get-ChildItem "sharepoint/solution/*.sppkg" | Select-Object -First 1
+              $existingApp = Get-PnPApp | Where-Object { $_.Title -eq $appName }
 
-            if ($existingApp -and $existingApp.Deployed) {
-              Write-Host "✅ App is already deployed. Skipping."
-              return
-            }
+              if ($existingApp -and $existingApp.Deployed) {
+                Write-Host "✅ App is already deployed. Skipping."
+                return
+              }
 
-            Write-Host "📦 Uploading and deploying app..."
-            Add-PnPApp -Path $package.FullName -Scope Tenant -Publish -Overwrite
+              Write-Host "📦 Uploading and deploying app..."
+              Add-PnPApp -Path $package.FullName -Scope Tenant -Publish -Overwrite
