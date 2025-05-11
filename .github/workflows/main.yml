@@ -3,7 +3,7 @@ name: SPFx CI/CD Pipeline
 on:
   push:
     branches:
-      - master  # or 'main' if your repo uses that
+      - master # or 'main' if your repo uses that
 
 jobs:
   build:
@@ -16,7 +16,7 @@ jobs:
       - name: 🔧 Setup Node.js
         uses: actions/setup-node@v3
         with:
-          node-version: '18.18.1'
+          node-version: "18.18.1"
 
       - name: 📦 Install Dependencies
         run: npm install
@@ -55,7 +55,7 @@ jobs:
         env:
           CLIENT_ID: ${{ secrets.CLIENT_ID }}
           CLIENT_SECRET: ${{ secrets.CLIENT_SECRET }}
-          TENANT_ID: ${{ secrets.TENANT_ID }}
+
           SPO_SITE_URL: ${{ secrets.SPO_SITE_URL }}
         run: |
           Install-Module PnP.PowerShell -Force -AllowClobber -Scope CurrentUser
@@ -63,21 +63,18 @@ jobs:
           $url = $env:SPO_SITE_URL
           $clientId = $env:CLIENT_ID
           $clientSecret = $env:CLIENT_SECRET
-          $tenantId = $env:TENANT_ID
 
           Write-Host "`n🧪 Verifying secrets..."
-          if (!$url -or !$clientId -or !$clientSecret -or !$tenantId) {
+          if (!$url -or !$clientId -or !$clientSecret) {
             Write-Error "❌ One or more environment variables are empty. Please check GitHub secrets."
             exit 1
           }
 
           Write-Host "🌐 SPO_SITE_URL: $url"
           Write-Host "🔑 CLIENT_ID: $clientId"
-          Write-Host "🏢 TENANT_ID: $tenantId"
 
           Write-Host "`n🔌 Connecting to SharePoint..."
-          Connect-PnPOnline -Url $url -ClientId $clientId -ClientSecret $clientSecret -Tenant $tenantId
-
+          Connect-PnPOnline -Url $url -ClientId $clientId -ClientSecret $clientSecret
           Write-Host "✅ Connected to SharePoint."
 
           $appName = "advanced-comments-box"
