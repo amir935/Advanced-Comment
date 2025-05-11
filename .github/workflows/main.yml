@@ -37,7 +37,7 @@ jobs:
           path: sharepoint/solution/advanced-comments-box.sppkg
 
   deploy:
-    runs-on: windows-latest # Use Windows for PowerShell compatibility
+    runs-on: windows-latest
     needs: build
 
     steps:
@@ -58,14 +58,12 @@ jobs:
       - name: 🚀 Deploy SPFx App to App Catalog (PowerShell)
         shell: pwsh
         env:
-          ADMIN_USERNAME: ${{ secrets.ADMIN_USERNAME }}
-          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+          CLIENT_ID: ${{ secrets.CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.CLIENT_SECRET }}
+          TENANT_ID: ${{ secrets.TENANT_ID }}
           SPO_SITE_URL: ${{ secrets.SPO_SITE_URL }}
         run: |
-          $secpass = ConvertTo-SecureString $env:ADMIN_PASSWORD -AsPlainText -Force
-          $creds = New-Object System.Management.Automation.PSCredential($env:ADMIN_USERNAME, $secpass)
-
-          Connect-PnPOnline -Url $env:SPO_SITE_URL -Credentials $creds
+          Connect-PnPOnline -Url $env:SPO_SITE_URL -ClientId $env:CLIENT_ID -ClientSecret $env:CLIENT_SECRET -Tenant $env:TENANT_ID
 
           $appName = "advanced-comments-box"
           $package = Get-ChildItem "sharepoint/solution/*.sppkg" | Select-Object -First 1
