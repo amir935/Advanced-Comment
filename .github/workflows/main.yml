@@ -3,7 +3,7 @@ name: SPFx CI/CD Pipeline
 on:
   push:
     branches:
-      - master # or 'main' if you're using that
+      - master  # or 'main' if that's your default branch
 
 jobs:
   build:
@@ -16,7 +16,7 @@ jobs:
       - name: 🔧 Setup Node.js
         uses: actions/setup-node@v3
         with:
-          node-version: "18.18.1"
+          node-version: '18.18.1'
 
       - name: 📦 Install Dependencies
         run: npm install
@@ -49,26 +49,35 @@ jobs:
         with:
           name: spfx-package
           path: sharepoint/solution/
-      - name: 🧰 Setup M365 CLI default appId
+
+      - name: 🔧 Install Microsoft 365 CLI
+        run: npm install -g @pnp/cli-microsoft365
+
+      - name: 🧰 Setup CLI Default App ID
         run: m365 setup --appId 00000003-0000-0ff1-ce00-000000000000
 
-      - name: 🔐 M365 Login (Admin Credentials)
-        id: login
-        uses: pnp/action-cli-login@v2.2.1
-        with:
-          ADMIN_USERNAME: ${{ secrets.ADMIN_USERNAME }}
-          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+      - name: 🔐 M365 Login (Manual)
+        run: m365 login --authType password --userName "${{ secrets.ADMIN_USERNAME }}" --password "${{ secrets.ADMIN_PASSWORD }}"
 
-      - name: 🧰 Setup M365 CLI default appId
-        run: m365 setup --appId 00000003-0000-0ff1-ce00-000000000000
-
-      - name: 🚀 Deploy SPFx App to App Catalog
-        run: |
-          m365 spo app add --filePath sharepoint/solution/advanced-comments-box.sppkg --appCatalogUrl ${{ secrets.SPO_SITE_URL }} --overwrite
-
-          APP_ID=$(m365 spo app get --name advanced-comments-box.sppkg --appCatalogUrl ${{ secrets.SPO_SITE_URL }} --output json | jq -r ".UniqueId")
-
-          echo "Deploying app with ID: $APP_ID"
-
-          m365 spo app deploy --id $APP_ID --appCatalogUrl ${{ secrets.SPO_SITE_URL }} --skipFeatureDeployment
+      - name: 🚀 Deploy SPFx App to App Catalog (only if not deployed)
         shell: bash
+        run: |
+          APP_NAME="advanced-comments-box.sppkg"
+          FILE_PATH="sharepoint/solution/$APP_NAME"
+          APP_CATALOG_URL="${{ secrets.SPO_SITE_URL }}"
+
+          echo "🔍 Checking if app already deployed..."
+          DEPLOYED=$(m365 spo app list --appCatalogUrl "$APP_CATALOG_URL" --output json | jq -r --arg APP "$APP_NAME" '.[] | select(.Title==$APP) | .Deployed')
+
+          if [ "$DEPLOYED" == "true" ]; then
+            echo "✅ App is already deployed. Skipping."
+            exit 0
+          fi
+
+          echo "📦 Uploading app..."
+          m365 spo app add --filePath "$FILE_PATH" --appCatalogUrl "$APP_CATALOG_URL" --overwrite
+
+          APP_ID=$(m365 spo app get --name "$APP_NAME" --appCatalogUrl "$APP_CATALOG_URL" --output json | jq -r ".UniqueId")
+
+          echo "🚀 Deploying app with ID: $APP_ID"
+          m365 spo app deploy --id "$APP_ID" --appCatalogUrl "$APP_CATALOG_URL" --skipFeatureDeployment
