@@ -55,27 +55,34 @@ jobs:
           Install-Module PnP.PowerShell -Scope CurrentUser -Force -AllowClobber
           Import-Module PnP.PowerShell
 
-      - name: 🚀 Deploy SPFx App (Cert Auth)
-        shell: pwsh
-        env:
-          SPO_SITE_URL: ${{ secrets.SPO_SITE_URL }}
-          CLIENT_ID:   ${{ secrets.CLIENT_ID }}
-          TENANT_ID:   ${{ secrets.TENANT_ID }}
-          PFX_BASE64:  ${{ secrets.PFX_BASE64 }}
-          PFX_PASSWORD: ${{ secrets.PFX_PASSWORD }}
-        run: |
-          # write the cert to disk
-          [IO.File]::WriteAllBytes("$env:RUNNER_TEMP\spfx-deployer.pfx", [Convert]::FromBase64String($env:PFX_BASE64))
-          $securePwd = ConvertTo-SecureString $env:PFX_PASSWORD -AsPlainText -Force
-
-          Connect-PnPOnline `
-            -Url $env:SPO_SITE_URL `
-            -ClientId $env:CLIENT_ID `
-            -Tenant $env:TENANT_ID `
-            -CertificatePath "$env:RUNNER_TEMP\spfx-deployer.pfx" `
-            -CertificatePassword $securePwd
-
-          # now you can safely call Get/Publish/Add PnPApp
-          $app = Get-PnPApp | Where-Object Title -EQ "advanced-comments-box"
-          if ($app.Deployed) { Write-Host "Already deployed" } 
-          else { Add-PnPApp -Path (Get-ChildItem sharepoint/solution/*.sppkg).FullName -Scope Tenant -Publish -Overwrite }
+          - name: 🚀 Deploy SPFx App (Cert Auth)
+          shell: pwsh
+          env:
+            SPO_SITE_URL: ${{ secrets.SPO_SITE_URL }}
+            CLIENT_ID:   ${{ secrets.CLIENT_ID }}
+            TENANT_ID:   ${{ secrets.TENANT_ID }}
+            PFX_BASE64:  ${{ secrets.PFX_BASE64 }}
+            PFX_PASSWORD: ${{ secrets.PFX_PASSWORD }}
+          run: |
+            # write cert to disk
+            $pfxPath = "$env:RUNNER_TEMP\spfx-deployer.pfx"
+            [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($env:PFX_BASE64))
+            $securePwd = ConvertTo-SecureString $env:PFX_PASSWORD -AsPlainText -Force
+        
+            Import-Module PnP.PowerShell
+        
+            Connect-PnPOnline `
+              -Url $env:SPO_SITE_URL `
+              -ClientId $env:CLIENT_ID `
+              -Tenant $env:TENANT_ID `
+              -CertificatePath $pfxPath `
+              -CertificatePassword $securePwd
+        
+            $app = Get-PnPApp | Where-Object Title -EQ "advanced-comments-box"
+            if ($app -and $app.Deployed) {
+              Write-Host "✅ App already deployed"
+            } else {
+              Add-PnPApp -Path (Get-ChildItem sharepoint/solution/*.sppkg).FullName -Scope Tenant -Publish -Overwrite
+              Write-Host "🚀 Deployment complete."
+            }
+        
