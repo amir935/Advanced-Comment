@@ -55,15 +55,15 @@ jobs:
           Install-Module PnP.PowerShell -Scope CurrentUser -Force -AllowClobber
           Import-Module PnP.PowerShell
 
-          - name: 🚀 Deploy SPFx App (Cert Auth)
-          shell: pwsh
-          env:
+      - name: 🚀 Deploy SPFx App (Cert Auth)
+        shell: pwsh
+        env:
             SPO_SITE_URL: ${{ secrets.SPO_SITE_URL }}
             CLIENT_ID:   ${{ secrets.CLIENT_ID }}
             TENANT_ID:   ${{ secrets.TENANT_ID }}
             PFX_BASE64:  ${{ secrets.PFX_BASE64 }}
             PFX_PASSWORD: ${{ secrets.PFX_PASSWORD }}
-          run: |
+        run: |
             # write cert to disk
             $pfxPath = "$env:RUNNER_TEMP\spfx-deployer.pfx"
             [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($env:PFX_BASE64))
