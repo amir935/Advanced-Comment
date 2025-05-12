@@ -50,44 +50,27 @@ jobs:
           name: spfx-package
           path: sharepoint/solution/
 
-      - name: 🚀 Deploy SPFx App to App Catalog (PowerShell)
+      - name: 🚀 Deploy SPFx App (Cert Auth)
         shell: pwsh
         env:
-          CLIENT_ID: ${{ secrets.CLIENT_ID }}
-          CLIENT_SECRET: ${{ secrets.CLIENT_SECRET }}
-
           SPO_SITE_URL: ${{ secrets.SPO_SITE_URL }}
+          CLIENT_ID:   ${{ secrets.CLIENT_ID }}
+          TENANT_ID:   ${{ secrets.TENANT_ID }}
+          PFX_BASE64:  ${{ secrets.PFX_BASE64 }}
+          PFX_PASSWORD: ${{ secrets.PFX_PASSWORD }}
         run: |
-          Install-Module PnP.PowerShell -Force -AllowClobber -Scope CurrentUser
+          # write the cert to disk
+          [IO.File]::WriteAllBytes("$env:RUNNER_TEMP\spfx-deployer.pfx", [Convert]::FromBase64String($env:PFX_BASE64))
+          $securePwd = ConvertTo-SecureString $env:PFX_PASSWORD -AsPlainText -Force
 
-          $url = $env:SPO_SITE_URL
-          $clientId = $env:CLIENT_ID
-          $clientSecret = $env:CLIENT_SECRET
+          Connect-PnPOnline `
+            -Url $env:SPO_SITE_URL `
+            -ClientId $env:CLIENT_ID `
+            -Tenant $env:TENANT_ID `
+            -CertificatePath "$env:RUNNER_TEMP\spfx-deployer.pfx" `
+            -CertificatePassword $securePwd
 
-          Write-Host "`n🧪 Verifying secrets..."
-          if (!$url -or !$clientId -or !$clientSecret) {
-            Write-Error "❌ One or more environment variables are empty. Please check GitHub secrets."
-            exit 1
-          }
-
-          Write-Host "🌐 SPO_SITE_URL: $url"
-          Write-Host "🔑 CLIENT_ID: $clientId"
-
-          Write-Host "`n🔌 Connecting to SharePoint..."
-          Connect-PnPOnline -Url $url -ClientId $clientId -ClientSecret $clientSecret
-          Write-Host "✅ Connected to SharePoint."
-
-          $appName = "advanced-comments-box"
-          $package = Get-ChildItem "sharepoint/solution/*.sppkg" | Select-Object -First 1
-
-          Write-Host "🔍 Checking if app is already deployed..."
-          $existingApp = Get-PnPApp | Where-Object { $_.Title -eq $appName }
-
-          if ($existingApp -and $existingApp.Deployed) {
-            Write-Host "✅ App is already deployed. Skipping deployment."
-            return
-          }
-
-          Write-Host "📦 Uploading and deploying app..."
-          Add-PnPApp -Path $package.FullName -Scope Tenant -Publish -Overwrite
-          Write-Host "🚀 Deployment complete."
+          # now you can safely call Get/Publish/Add PnPApp
+          $app = Get-PnPApp | Where-Object Title -EQ "advanced-comments-box"
+          if ($app.Deployed) { Write-Host "Already deployed" } 
+          else { Add-PnPApp -Path (Get-ChildItem sharepoint/solution/*.sppkg).FullName -Scope Tenant -Publish -Overwrite }
