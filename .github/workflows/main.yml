@@ -49,6 +49,11 @@ jobs:
         with:
           name: spfx-package
           path: sharepoint/solution/
+      - name: 🚀 Install PnP.PowerShell
+        shell: pwsh
+        run: |
+          Install-Module PnP.PowerShell -Scope CurrentUser -Force -AllowClobber
+          Import-Module PnP.PowerShell
 
       - name: 🚀 Deploy SPFx App (Cert Auth)
         shell: pwsh
