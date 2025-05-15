@@ -1,6 +1,5 @@
 import * as React from "react";
 import { Version } from "@microsoft/sp-core-library";
-
 import { SPComponentLoader } from "@microsoft/sp-loader";
 import { CalloutTriggers } from "@pnp/spfx-property-controls/lib/PropertyFieldHeader";
 import { PropertyFieldSliderWithCallout } from "@pnp/spfx-property-controls/lib/PropertyFieldSliderWithCallout";
@@ -18,11 +17,10 @@ import {
 } from "@microsoft/sp-property-pane";
 import styles from "./PageCommentsWebPart.module.scss";
 import * as strings from "PageCommentsWebPartStrings";
-
-// import * as $ from "jquery";
 require("textcomplete");
 import { sp } from "@pnp/sp";
 import SPHelper from "./SPHelper";
+
 require("./css/jquery-comments.css");
 
 export interface IPageCommentsWebPartProps {
@@ -44,6 +42,7 @@ export interface IPageCommentsWebPartProps {
 }
 
 export default class PageCommentsWebPart extends BaseClientSideWebPart<IPageCommentsWebPartProps> {
+  private isCommentAdmin: boolean = false;
   private helper: SPHelper = null;
   private currentUserInfo: any = null;
   private siteUsers: any[] = [];
@@ -53,10 +52,7 @@ export default class PageCommentsWebPart extends BaseClientSideWebPart<IPageComm
 
   protected async onInit(): Promise<void> {
     await super.onInit();
-
-    sp.setup({
-      spfxContext: this.context as any,
-    });
+    sp.setup({ spfxContext: this.context as any });
   }
 
   public constructor() {
@@ -73,8 +69,9 @@ export default class PageCommentsWebPart extends BaseClientSideWebPart<IPageComm
         this.properties.docLib.toLocaleUpperCase() === "NO_LIST_SELECTED")
     ) {
       this.domElement.innerHTML = `
-        <div class="${styles.errorMessage}"><i class="fa fa-times-circle" aria-hidden="true"></i>&nbsp;${strings.NoAttachmentRepoMsg}</div>
-      `;
+        <div class="${styles.errorMessage}">
+          <i class="fa fa-times-circle"></i>&nbsp;${strings.NoAttachmentRepoMsg}
+        </div>`;
     } else {
       this.context.statusRenderer.displayLoadingIndicator(
         this.domElement,
@@ -104,8 +101,17 @@ export default class PageCommentsWebPart extends BaseClientSideWebPart<IPageComm
         </div>
       </div>`;
 
-    const self = this;
     this.pageurl = this.context.pageContext.legacyPageContext.serverRequestPath;
+
+    // 1) fetch current user
+    this.currentUserInfo = await this.helper.getCurrentUserInfo();
+    // 2) check Comment Administrators membership
+    this.isCommentAdmin = await this.helper.isUserInGroup(
+      "comment Administer",
+      this.currentUserInfo.ID
+    );
+    // 3) preload @-mention users
+    this.siteUsers = await this.helper.getSiteUsers(this.currentUserInfo.ID);
 
     if (this.properties.enableAttachments) {
       await this.helper.getDocLibInfo();
@@ -117,29 +123,26 @@ export default class PageCommentsWebPart extends BaseClientSideWebPart<IPageComm
       );
     }
 
-    this.currentUserInfo = await this.helper.getCurrentUserInfo();
-    console.log(this.currentUserInfo);
-    this.siteUsers = await this.helper.getSiteUsers(self.currentUserInfo.ID);
-
+    const self = this;
     require(["jquery", "./js/jquery-comments.min"], (jQuery, comments) => {
-      const canEdit = self.properties.enableEditing;
-      const currentUserId = Number(self.currentUserInfo.ID) + 1;
-      const currentUserIsAdmin = Boolean(self.currentUserInfo.IsSiteAdmin);
+      const currentUserId = Number(self.currentUserInfo.ID);
+      const currentUserIsAdmin =
+        self.currentUserInfo.IsSiteAdmin || self.isCommentAdmin;
 
       jQuery("#page-comments").comments({
+        fieldMappings: {
+          profilePictureURL: "profile_picture_url",
+        },
         profilePictureURL: self.currentUserInfo.Picture,
-
         currentUserId,
         currentUserIsAdmin,
-        enableEditing: canEdit,
-
+        enableEditing: self.properties.enableEditing,
         enableNavigation: self.properties.enableNavigation,
         enableReplying: self.properties.enableReplying,
         enableDeleting: self.properties.enableDeleting,
         enableDeletingCommentWithReplies:
           self.properties.enableDeletingCommentWithReplies,
         enableUpvoting: self.properties.enableUpvoting,
-
         enableAttachments: self.properties.enableAttachments,
         enableHashtags: self.properties.enableHashtags,
         enablePinging: self.properties.enablePinging,
@@ -160,21 +163,57 @@ export default class PageCommentsWebPart extends BaseClientSideWebPart<IPageComm
         timeFormatter: (time) => {
           try {
             return moment(time).format(
-              self.properties.datetimeFormat || "DD/MM/YYYY  hh:mm:ss A"
+              self.properties.datetimeFormat || "DD/MM/YYYY hh:mm:ss A"
             );
-          } catch (err) {
-            return moment(time).format("DD/MM/YYYY  hh:mm:ss A");
+          } catch {
+            return moment(time).format("DD/MM/YYYY hh:mm:ss A");
           }
         },
 
+        // getComments: async (success, error) => {
+        //   try {
+        //     const commentsArray = await self.helper.getPostComments(
+        //       self.pageurl,
+        //       self.currentUserInfo
+        //     );
+        //     commentsArray.forEach((comment) => {
+        //       // mark new
+        //       if (
+        //         moment(comment.created).format("DD/MM/YYYY") ===
+        //         moment().format("DD/MM/YYYY")
+        //       ) {
+        //         comment.is_new = true;
+        //       }
+        //       // only authors or Comment-Admins can edit
+        //       const isOwner = comment.userid === self.currentUserInfo.ID;
+        //       comment.created_by_current_user = isOwner;
+        //     });
+        //     success(commentsArray);
+        //   } catch (e) {
+        //     console.error("Error loading comments:", e);
+        //     success([]);
+        //   }
+        // },
         getComments: async (success, error) => {
-          console.log("🧪 getComments stub, fakeCurrentUserId=", currentUserId);
           try {
             const commentsArray = await self.helper.getPostComments(
               self.pageurl,
               self.currentUserInfo
             );
+
             commentsArray.forEach((comment) => {
+              const rawUsername =
+                comment.email ||
+                comment.UserPrincipalName ||
+                comment.fullname ||
+                "";
+              comment.profilePictureURL = `${
+                self.context.pageContext.web.absoluteUrl
+              }/_layouts/15/userphoto.aspx?size=S&username=${encodeURIComponent(
+                rawUsername
+              )}`; //comment.profile_picture_url;
+              console.log(comment.profilePictureURL);
+
               if (
                 moment(comment.created).format("DD/MM/YYYY") ===
                 moment().format("DD/MM/YYYY")
@@ -182,21 +221,21 @@ export default class PageCommentsWebPart extends BaseClientSideWebPart<IPageComm
                 comment.is_new = true;
               }
 
-              const isOwner = true; // comment.created_by_current_user =
-              //comment.userid === self.currentUserInfo.ID;
-              const isAdmin = self.currentUserInfo.IsSiteAdmin === true;
-
-              comment.created_by_current_user = isOwner || isAdmin;
-              console.log(self.currentUserInfo.IsSiteAdmin);
+              // ✅ Mark if this is the current user's comment
+              const isOwner = comment.userid === self.currentUserInfo.ID;
+              comment.created_by_current_user = isOwner;
+              console.log(comment.profilePictureURL);
             });
+            console.log("🧪 Final comment objects:", commentsArray);
+            console.log("🔍 sample comment:", commentsArray[0]);
             success(commentsArray);
-          } catch (err) {
-            console.error("Error loading comments:", err);
+          } catch (e) {
+            console.error("Error loading comments:", e);
             success([]);
           }
         },
 
-        postComment: async (commentJson, success, error) => {
+        postComment: async (commentJson, success) => {
           commentJson.fullname = self.currentUserInfo.DisplayName;
           commentJson.userid = self.currentUserInfo.ID;
           commentJson = self.saveComment(commentJson);
@@ -205,22 +244,17 @@ export default class PageCommentsWebPart extends BaseClientSideWebPart<IPageComm
             commentJson,
             self.currentUserInfo
           );
-          if (
+          commentJson.is_new =
             moment(commentJson.created).format("DD/MM/YYYY") ===
-            moment().format("DD/MM/YYYY")
-          ) {
-            commentJson.is_new = true;
-          }
+            moment().format("DD/MM/YYYY");
           commentJson.created_by_current_user = true;
           success(commentJson);
         },
-        putComment: async (commentJSON, success, error) => {
-          console.log("Current user ROLE:", self.currentUserInfo);
 
+        putComment: async (commentJSON, success, error) => {
           commentJSON = self.saveComment(commentJSON);
           commentJSON.userid = self.currentUserInfo.ID;
           commentJSON.fullname = self.currentUserInfo.DisplayName;
-
           try {
             const result = await self.helper.editComments(
               self.pageurl,
@@ -228,8 +262,7 @@ export default class PageCommentsWebPart extends BaseClientSideWebPart<IPageComm
               self.currentUserInfo
             );
             if (result && typeof result === "object" && "error" in result) {
-              error(result.error as string);
-              return;
+              return error(result.error as string);
             }
             success(commentJSON);
           } catch (e) {
@@ -238,85 +271,26 @@ export default class PageCommentsWebPart extends BaseClientSideWebPart<IPageComm
           }
         },
 
-        // putComment: async (commentJSON, success, error) => {
-        //   console.log("Current user ROLE:", self.currentUserInfo);
-
-        //   commentJSON = self.saveComment(commentJSON);
-
-        //   commentJSON.userid = self.currentUserInfo.ID;
-        //   commentJSON.fullname = self.currentUserInfo.DisplayName;
-
-        //   const isOwner =
-        //     parseInt(commentJSON.userid) !== parseInt(self.currentUserInfo.ID);
-
-        //   const isAdmin = self.currentUserInfo.IsSiteAdmin === false;
-
-        //   if (!isOwner && !isAdmin) {
-        //     console.warn("Edit denied: user is not the comment owner or admin");
-        //     error("You are not allowed to edit this comment.");
-        //     return;
-        //   }
-
-        //   const result = await self.helper.editComments(
-        //     self.pageurl,
-        //     commentJSON,
-        //     self.currentUserInfo
-        //   );
-
-        //   if (result && typeof result === "object" && "error" in result) {
-        //     error(result.error);
-        //     return;
-        //   }
-
-        //   success(commentJSON);
-        // },
         deleteComment: async (commentJSON, success, error) => {
-          console.log("Comment userid:", commentJSON.userid);
-          console.log("Current user ID:", self.currentUserInfo.ID);
-
           commentJSON = self.saveComment(commentJSON);
-
-          // ✅ Add missing fields
           commentJSON.userid = self.currentUserInfo.ID;
           commentJSON.fullname = self.currentUserInfo.DisplayName;
-          console.log("Comment userid:", commentJSON.userid);
           try {
             const result = await self.helper.deleteComment(
               self.pageurl,
               commentJSON,
               self.currentUserInfo
             );
-            if (
-              typeof result === "object" &&
-              result !== null &&
-              "error" in result
-            ) {
-              error((result as any).error); // or just: error(result.error) with proper type cast
-              return;
-            } else success();
-          } catch (err) {
-            error(err);
+            if (result && typeof result === "object" && "error" in result) {
+              return error((result as any).error);
+            }
+            success();
+          } catch (e) {
+            error(e);
           }
         },
 
-        searchUsers: async (term, success) => {
-          if (self.siteUsers.length <= 0) {
-            self.siteUsers = await self.helper.getSiteUsers(
-              self.currentUserInfo.ID
-            );
-          }
-          const res = _.chain(self.siteUsers)
-            .filter(
-              (o) =>
-                o.fullname.toLowerCase().includes(term.toLowerCase()) ||
-                o.email.toLowerCase().includes(term.toLowerCase())
-            )
-            .take(10)
-            .value();
-          success(res);
-        },
-
-        upvoteComment: async (commentJSON, success, error) => {
+        upvoteComment: async (commentJSON, success) => {
           await self.helper.voteComment(
             self.pageurl,
             commentJSON,
@@ -340,12 +314,9 @@ export default class PageCommentsWebPart extends BaseClientSideWebPart<IPageComm
             res[0],
             self.currentUserInfo
           );
-          if (
+          res[0].is_new =
             moment(res[0].created).format("DD/MM/YYYY") ===
-            moment().format("DD/MM/YYYY")
-          ) {
-            res[0].is_new = true;
-          }
+            moment().format("DD/MM/YYYY");
           res[0].created_by_current_user = true;
           success(res);
         },
@@ -353,32 +324,41 @@ export default class PageCommentsWebPart extends BaseClientSideWebPart<IPageComm
         editComment: () => {
           jQuery("#page-comments").comments("refresh");
         },
+
+        searchUsers: async (term, success) => {
+          if (self.siteUsers.length === 0) {
+            self.siteUsers = await self.helper.getSiteUsers(
+              self.currentUserInfo.ID
+            );
+          }
+          const matches = _.chain(self.siteUsers)
+            .filter(
+              (u) =>
+                u.fullname.toLowerCase().includes(term.toLowerCase()) ||
+                u.email.toLowerCase().includes(term.toLowerCase())
+            )
+            .take(10)
+            .value();
+          success(matches);
+        },
       });
     });
   };
 
   private saveComment = (data) => {
     Object.keys(data.pings).forEach((userId) => {
-      const fullname = data.pings[userId];
-      const pingText = `@${fullname}`;
       data.content = data.content.replace(
         new RegExp(`@${userId}`, "g"),
-        pingText
+        `@${data.pings[userId]}`
       );
     });
     return data;
   };
 
-  private checkForDocumentLibrary = (value: string): string => {
-    if (
-      !value ||
-      value.trim().length === 0 ||
-      value.toUpperCase() === "NO_LIST_SELECTED"
-    ) {
-      return strings.AttachmentRepoPropValMsg;
-    }
-    return "";
-  };
+  private checkForDocumentLibrary = (value: string): string =>
+    !value || value.trim() === "" || value.toUpperCase() === "NO_LIST_SELECTED"
+      ? strings.AttachmentRepoPropValMsg
+      : "";
 
   protected get disableReactivePropertyChanges(): boolean {
     return true;
@@ -392,9 +372,7 @@ export default class PageCommentsWebPart extends BaseClientSideWebPart<IPageComm
     return {
       pages: [
         {
-          header: {
-            description: strings.PropertyPaneDescription,
-          },
+          header: { description: strings.PropertyPaneDescription },
           groups: [
             {
               groupName: strings.BasicGroupName,
@@ -402,8 +380,6 @@ export default class PageCommentsWebPart extends BaseClientSideWebPart<IPageComm
                 PropertyPaneTextField("datetimeFormat", {
                   label: strings.DateTimeFormatLabel,
                   description: strings.DateTimeFormatDescription,
-                  multiline: false,
-                  resizable: false,
                   value: this.properties.datetimeFormat,
                 }),
                 PropertyFieldToggleWithCallout("roundProfilePictures", {
@@ -417,10 +393,7 @@ export default class PageCommentsWebPart extends BaseClientSideWebPart<IPageComm
                   ),
                   onText: "Enable",
                   offText: "Disable",
-                  checked:
-                    this.properties.roundProfilePictures !== undefined
-                      ? this.properties.roundProfilePictures
-                      : true,
+                  checked: this.properties.roundProfilePictures ?? true,
                 }),
                 PropertyFieldToggleWithCallout("enableNavigation", {
                   calloutTrigger: CalloutTriggers.Hover,

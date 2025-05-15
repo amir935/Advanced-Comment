@@ -7,6 +7,7 @@ import "@pnp/sp/items/list";
 import "@pnp/sp/fields/list";
 import "@pnp/sp/views/list";
 import "@pnp/sp/site-users/web";
+import "@pnp/sp/site-groups/web";
 import { IList } from "@pnp/sp/lists";
 import * as _ from "lodash";
 
@@ -90,6 +91,77 @@ export default class SPHelper {
     return res.length > 0;
   };
 
+  // public getPostComments = async (
+  //   pageurl,
+  //   currentUserInfo,
+  //   commentJson = null
+  // ) => {
+  //   const res = await this._list.items
+  //     .select(
+  //       "Comments",
+  //       "Likes",
+  //       "FieldValuesAsText/Comments",
+  //       "FieldValuesAsText/Likes"
+  //     )
+  //     .filter(`PageURL eq '${pageurl}'`)
+  //     .expand("FieldValuesAsText")
+  //     .get();
+
+  //   if (res.length === 0) return [];
+
+  //   const rawComments = res[0].FieldValuesAsText.Comments;
+  //   const rawLikes = res[0].FieldValuesAsText.Likes;
+
+  //   const jsonComments = rawComments ? JSON.parse(rawComments) : [];
+  //   const jsonLikes = rawLikes ? JSON.parse(rawLikes) : [];
+
+  //   if (commentJson) {
+  //     let voteEntry = jsonLikes.find((l) => l.commentID === commentJson.id);
+
+  //     if (voteEntry) {
+  //       const hasVoted = voteEntry.userVote.some(
+  //         (v) => v.userid === currentUserInfo.ID
+  //       );
+
+  //       if (commentJson.user_has_upvoted && !hasVoted) {
+  //         voteEntry.userVote.push({
+  //           userid: currentUserInfo.ID,
+  //           name: currentUserInfo.DisplayName,
+  //         });
+  //       }
+
+  //       if (!commentJson.user_has_upvoted && hasVoted) {
+  //         voteEntry.userVote = voteEntry.userVote.filter(
+  //           (v) => v.userid !== currentUserInfo.ID
+  //         );
+  //       }
+  //     } else if (commentJson.user_has_upvoted) {
+  //       jsonLikes.push({
+  //         commentID: commentJson.id,
+  //         userVote: [
+  //           {
+  //             userid: currentUserInfo.ID,
+  //             name: currentUserInfo.DisplayName,
+  //           },
+  //         ],
+  //       });
+  //     }
+
+  //     await this.updateVoteForComment(pageurl, jsonLikes);
+  //   }
+
+  //   jsonLikes.forEach((likeEntry) => {
+  //     const comment = jsonComments.find((c) => c.id === likeEntry.commentID);
+  //     if (comment) {
+  //       comment.upvote_count = likeEntry.userVote.length;
+  //       comment.user_has_upvoted = likeEntry.userVote.some(
+  //         (v) => v.userid === currentUserInfo.ID
+  //       );
+  //     }
+  //   });
+
+  //   return jsonComments;
+  // };
   public getPostComments = async (
     pageurl,
     currentUserInfo,
@@ -114,6 +186,7 @@ export default class SPHelper {
     const jsonComments = rawComments ? JSON.parse(rawComments) : [];
     const jsonLikes = rawLikes ? JSON.parse(rawLikes) : [];
 
+    // ✅ Add or update votes
     if (commentJson) {
       let voteEntry = jsonLikes.find((l) => l.commentID === commentJson.id);
 
@@ -149,6 +222,7 @@ export default class SPHelper {
       await this.updateVoteForComment(pageurl, jsonLikes);
     }
 
+    // ✅ Apply votes to comments
     jsonLikes.forEach((likeEntry) => {
       const comment = jsonComments.find((c) => c.id === likeEntry.commentID);
       if (comment) {
@@ -157,6 +231,34 @@ export default class SPHelper {
           (v) => v.userid === currentUserInfo.ID
         );
       }
+    });
+
+    // ✅ Resolve and map user info for profile photos
+    const uniqueUserIds = Array.from(new Set<number>(jsonComments.map((c) => c.userid)));
+
+    const userMap = new Map<number, { email: string; upn: string }>();
+
+    for (const userId of uniqueUserIds) {
+      try {
+        const user = await sp.web.siteUsers.getById(userId).get();
+        userMap.set(userId, {
+          email: user.Email,
+          upn: user.UserPrincipalName || user.LoginName,
+        });
+      } catch (err) {
+        console.warn(`⚠️ Could not fetch user with ID ${userId}`, err);
+        userMap.set(userId, {
+          email: "",
+          upn: "",
+        });
+      }
+    }
+
+    // ✅ Attach email/UserPrincipalName to each comment
+    jsonComments.forEach((comment) => {
+      const userInfo = userMap.get(comment.userid);
+      comment.email = userInfo?.email || "";
+      comment.UserPrincipalName = userInfo?.upn || "";
     });
 
     return jsonComments;
@@ -291,6 +393,23 @@ export default class SPHelper {
     }
   };
 
+  public async isUserInGroup(
+    groupName: string,
+    userId: number
+  ): Promise<boolean> {
+    try {
+      const groupUsers = await sp.web.siteGroups
+        .getByName(groupName)
+        .users.get();
+      return groupUsers.some((user) => user.Id === userId);
+    } catch (error) {
+      console.error(`Error checking group '${groupName}':`, error);
+      return false;
+    }
+  }
+
+
+
   public editComments = async (pageurl, commentJson, currentUserInfo) => {
     const commentsRaw = await this.getComment(pageurl);
     if (!commentsRaw) return { error: "No comments found" };
@@ -299,7 +418,13 @@ export default class SPHelper {
     const match = jsonComments.find((c) => c.id === commentJson.id);
     if (!match) return { error: "Comment not found" };
 
-    if (match.userid !== currentUserInfo.ID) {
+    //const isOwner = match.userid === currentUserInfo.ID;
+    const isAdmin = await this.isUserInGroup(
+      "comment Administer",
+      currentUserInfo.ID
+    );
+
+    if (!isAdmin) {
       return { error: "Unauthorized" };
     }
 
@@ -322,7 +447,11 @@ export default class SPHelper {
     const isOwner = jsonComments.some(
       (c) => c.id === commentJson.id && c.userid === currentUserInfo.ID
     );
-    const isAdmin = currentUserInfo.IsSiteAdmin === true;
+
+    const isAdmin = await this.isUserInGroup(
+      "comment Administer",
+      currentUserInfo.ID
+    );
 
     if (!isOwner && !isAdmin) return { error: "Unauthorized" };
 
@@ -340,6 +469,56 @@ export default class SPHelper {
 
     return await this.updateComment(pageurl, jsonComments);
   };
+
+  // public editComments = async (pageurl, commentJson, currentUserInfo) => {
+  //   const commentsRaw = await this.getComment(pageurl);
+  //   if (!commentsRaw) return { error: "No comments found" };
+
+  //   const jsonComments = JSON.parse(commentsRaw);
+  //   const match = jsonComments.find((c) => c.id === commentJson.id);
+  //   if (!match) return { error: "Comment not found" };
+
+  //   if (match.userid !== currentUserInfo.ID) {
+  //     return { error: "Unauthorized" };
+  //   }
+
+  //   Object.assign(match, {
+  //     pings: commentJson.pings,
+  //     content: commentJson.content,
+  //     modified: commentJson.modified,
+  //   });
+
+  //   await this.updateComment(pageurl, jsonComments);
+  //   return { success: true };
+  // };
+
+  // public deleteComment = async (pageurl, commentJson, currentUserInfo) => {
+  //   const commentsRaw = await this.getComment(pageurl);
+  //   if (!commentsRaw) return;
+
+  //   let jsonComments = JSON.parse(commentsRaw);
+
+  //   const isOwner = jsonComments.some(
+  //     (c) => c.id === commentJson.id && c.userid === currentUserInfo.ID
+  //   );
+  //   const isAdmin = currentUserInfo.IsSiteAdmin === true;
+
+  //   if (!isOwner && !isAdmin) return { error: "Unauthorized" };
+
+  //   // Remove the comment and any replies
+  //   _.remove(
+  //     jsonComments,
+  //     (o: any) => o.id === commentJson.id || o.parent === commentJson.id
+  //   );
+
+  //   // Clean up orphaned child comments
+  //   const validIds = new Set(jsonComments.map((c) => c.id));
+  //   jsonComments = jsonComments.filter(
+  //     (c) => !c.parent || validIds.has(c.parent)
+  //   );
+
+  //   return await this.updateComment(pageurl, jsonComments);
+  // };
 
   public createFolder = async (folderPath) => {
     return await sp.web.folders.add(folderPath);
