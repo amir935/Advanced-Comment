@@ -419,14 +419,14 @@ export default class SPHelper {
     if (!match) return { error: "Comment not found" };
 
     //const isOwner = match.userid === currentUserInfo.ID;
-    const isAdmin = await this.isUserInGroup(
-      "comment Administer",
-      currentUserInfo.ID
-    );
+    // const isAdmin = await this.isUserInGroup(
+    //   "comment Administer",
+    //   currentUserInfo.ID
+    // );
 
-    if (!isAdmin) {
-      return { error: "Unauthorized" };
-    }
+    // if (!isAdmin) {
+    //   return { error: "Unauthorized" };
+    // }
 
     Object.assign(match, {
       pings: commentJson.pings,
@@ -444,16 +444,16 @@ export default class SPHelper {
 
     let jsonComments = JSON.parse(commentsRaw);
 
-    const isOwner = jsonComments.some(
-      (c) => c.id === commentJson.id && c.userid === currentUserInfo.ID
-    );
+    // const isOwner = jsonComments.some(
+    //   (c) => c.id === commentJson.id && c.userid === currentUserInfo.ID
+    // );
 
-    const isAdmin = await this.isUserInGroup(
-      "comment Administer",
-      currentUserInfo.ID
-    );
+    // const isAdmin = await this.isUserInGroup(
+    //   "comment Administer",
+    //   currentUserInfo.ID
+    // );
 
-    if (!isOwner && !isAdmin) return { error: "Unauthorized" };
+    // if (!isOwner && !isAdmin) return { error: "Unauthorized" };
 
     // Remove the comment and any replies
     _.remove(
