@@ -7,162 +7,94 @@ import "@pnp/sp/items/list";
 import "@pnp/sp/fields/list";
 import "@pnp/sp/views/list";
 import "@pnp/sp/site-users/web";
-import "@pnp/sp/site-groups/web";
+import "@pnp/sp/site-groups";
 import { IList } from "@pnp/sp/lists";
 import * as _ from "lodash";
-
 export default class SPHelper {
-  private lst_pageComments: string = "";
-  private lst_pageDocuments: string = "";
-  private lst_docListName: string = "";
-  private _list: IList = null;
-  private _doclist: IList = null;
+    private lst_pageComments: string = '';
+    private lst_pageDocuments: string = '';
+    private lst_docListName: string = '';
+    private _list: IList = null;
+    private _doclist: IList = null;
+    private cqPostDocs: string = `<View>
+                                    <Query>
+                                        <Where>
+                                            <And>
+                                                <Eq>
+                                                    <FieldRef Name='FSObjType' />
+                                                    <Value Type='Text'>1</Value>
+                                                </Eq>
+                                                <Eq>
+                                                    <FieldRef Name='FileRef' />
+                                                    <Value Type='Text'>{{FilePath}}</Value>
+                                                </Eq>
+                                            </And>
+                                        </Where>
+                                        <ViewFields><FieldRef Name="ID" /></ViewFields>
+                                    </Query>
+                                </View>`;
 
-  private cqPostDocs: string = `<View>
-    <Query>
-        <Where>
-            <And>
-                <Eq><FieldRef Name='FSObjType' /><Value Type='Text'>1</Value></Eq>
-                <Eq><FieldRef Name='FileRef' /><Value Type='Text'>{{FilePath}}</Value></Eq>
-            </And>
-        </Where>
-        <ViewFields><FieldRef Name="ID" /></ViewFields>
-    </Query>
-</View>`;
-
-  constructor(lstDocLib?: string) {
-    this.lst_pageComments = "Page Comments123";
-    this._list = sp.web.lists.getByTitle(this.lst_pageComments);
-    if (lstDocLib) {
-      this.lst_pageDocuments = lstDocLib;
+    public constructor(lstDocLib?: string) {
+        this.lst_pageComments = "Page Comments123";
+        this._list = sp.web.lists.getByTitle(this.lst_pageComments);
+        if (lstDocLib) {
+            this.lst_pageDocuments = lstDocLib;
+        }
     }
-  }
 
-  public getDocLibInfo = async () => {
-    this._doclist = sp.web.lists.getById(this.lst_pageDocuments);
-    let listInfo: any = await this._doclist.select("Title").get();
-    this.lst_docListName = listInfo.Title;
-  };
+    public getDocLibInfo = async () => {
+        this._doclist = sp.web.lists.getById(this.lst_pageDocuments);
+        let listInfo: any = await this._doclist.select('Title').get();
+        this.lst_docListName = listInfo.Title;
+    }
 
-  public queryList = async (query, $list: IList) => {
-    return await $list.getItemsByCAMLQuery(query);
-  };
+    public queryList = async (query, $list: IList) => {
+        return await $list.getItemsByCAMLQuery(query);
+    }
 
-  public getCurrentUserInfo = async () => {
-    const currentUserInfo = await sp.web.currentUser.get();
-    return {
-      ID: currentUserInfo.Id,
-      Email: currentUserInfo.Email,
-      LoginName: currentUserInfo.LoginName,
-      DisplayName: currentUserInfo.Title,
-      Picture: `/_layouts/15/userphoto.aspx?size=S&username=${currentUserInfo.UserPrincipalName}`,
-      IsSiteAdmin: false, //currentUserInfo.IsSiteAdmin,
-    };
-  };
+    public getCurrentUserInfo = async () => {
+        let currentUserInfo = await sp.web.currentUser.get();
+        return ({
+            ID: currentUserInfo.Id,
+            Email: currentUserInfo.Email,
+            LoginName: currentUserInfo.LoginName,
+            DisplayName: currentUserInfo.Title,
+            Picture: '/_layouts/15/userphoto.aspx?size=S&username=' + currentUserInfo.UserPrincipalName,
+        });
+    }
 
-  public getSiteUsers = async (currentUserId: number) => {
-    let resusers = await sp.web.siteUsers
-      .filter("IsHiddenInUI eq false and PrincipalType eq 1")
-      .get();
-    _.remove(resusers, (o) => o.Id == currentUserId || o.Email == "");
-    return resusers.map((user) => ({
-      id: user.Id,
-      fullname: user.Title,
-      email: user.Email,
-      profile_picture_url:
-        "/_layouts/15/userphoto.aspx?size=S&username=" + user.UserPrincipalName,
-      IsSiteAdmin: false, //user.IsSiteAdmin,
-    }));
-  };
+    public getSiteUsers = async (currentUserId: number) => {
+        let resusers = await sp.web.siteUsers.filter('IsHiddenInUI eq false and PrincipalType eq 1').get();
+        _.remove(resusers, (o) => { return o.Id == currentUserId || o.Email == ""; });
+        let userResults = [];
+        resusers.map((user) => {
+            userResults.push({
+                id: user.Id,
+                fullname: user.Title,
+                email: user.Email,
+                profile_picture_url: '/_layouts/15/userphoto.aspx?size=S&username=' + user.UserPrincipalName
+            });
+        });
+        return userResults;
+    }
 
-  public getPostAttachmentFilePath = async (pageUrl) => {
-    let pageName = pageUrl.split("/").pop().split(".").slice(0, -1).join(".");
-    let res = await sp.web.select("ServerRelativeUrl").get();
-    let doclistName =
-      this.lst_docListName.toLowerCase() === "documents"
-        ? "Shared Documents"
-        : this.lst_docListName;
-    return `${res.ServerRelativeUrl}/${doclistName}/${pageName}`;
-  };
+    public getPostAttachmentFilePath = async (pageUrl) => {
+        let pageName = pageUrl.split('/')[pageUrl.split('/').length - 1].split('.').slice(0, -1).join('.');
+        let res = await sp.web.select('ServerRelativeUrl').get();
+        let doclistName = (this.lst_docListName.toLowerCase() === 'documents') ? "Shared Documents" : this.lst_docListName;
+        return res.ServerRelativeUrl + "/" + doclistName + "/" + pageName;
+    }
 
-  public checkForPageFolder = async (postAttachmentPath) => {
-    let xml = this.cqPostDocs.replace("{{FilePath}}", postAttachmentPath);
-    let res = await this.queryList({ ViewXml: xml }, this._doclist);
-    return res.length > 0;
-  };
+    public checkForPageFolder = async (postAttachmentPath) => {
+        let xml = this.cqPostDocs.replace('{{FilePath}}', postAttachmentPath);
+        let q = {
+            ViewXml: xml
+        };
+        let res = await this.queryList(q, this._doclist);
+        if (res.length > 0) return true; else return false;
+    }
 
-  // public getPostComments = async (
-  //   pageurl,
-  //   currentUserInfo,
-  //   commentJson = null
-  // ) => {
-  //   const res = await this._list.items
-  //     .select(
-  //       "Comments",
-  //       "Likes",
-  //       "FieldValuesAsText/Comments",
-  //       "FieldValuesAsText/Likes"
-  //     )
-  //     .filter(`PageURL eq '${pageurl}'`)
-  //     .expand("FieldValuesAsText")
-  //     .get();
-
-  //   if (res.length === 0) return [];
-
-  //   const rawComments = res[0].FieldValuesAsText.Comments;
-  //   const rawLikes = res[0].FieldValuesAsText.Likes;
-
-  //   const jsonComments = rawComments ? JSON.parse(rawComments) : [];
-  //   const jsonLikes = rawLikes ? JSON.parse(rawLikes) : [];
-
-  //   if (commentJson) {
-  //     let voteEntry = jsonLikes.find((l) => l.commentID === commentJson.id);
-
-  //     if (voteEntry) {
-  //       const hasVoted = voteEntry.userVote.some(
-  //         (v) => v.userid === currentUserInfo.ID
-  //       );
-
-  //       if (commentJson.user_has_upvoted && !hasVoted) {
-  //         voteEntry.userVote.push({
-  //           userid: currentUserInfo.ID,
-  //           name: currentUserInfo.DisplayName,
-  //         });
-  //       }
-
-  //       if (!commentJson.user_has_upvoted && hasVoted) {
-  //         voteEntry.userVote = voteEntry.userVote.filter(
-  //           (v) => v.userid !== currentUserInfo.ID
-  //         );
-  //       }
-  //     } else if (commentJson.user_has_upvoted) {
-  //       jsonLikes.push({
-  //         commentID: commentJson.id,
-  //         userVote: [
-  //           {
-  //             userid: currentUserInfo.ID,
-  //             name: currentUserInfo.DisplayName,
-  //           },
-  //         ],
-  //       });
-  //     }
-
-  //     await this.updateVoteForComment(pageurl, jsonLikes);
-  //   }
-
-  //   jsonLikes.forEach((likeEntry) => {
-  //     const comment = jsonComments.find((c) => c.id === likeEntry.commentID);
-  //     if (comment) {
-  //       comment.upvote_count = likeEntry.userVote.length;
-  //       comment.user_has_upvoted = likeEntry.userVote.some(
-  //         (v) => v.userid === currentUserInfo.ID
-  //       );
-  //     }
-  //   });
-
-  //   return jsonComments;
-  // };
-  public getPostComments = async (
+public getPostComments = async (
     pageurl,
     currentUserInfo,
     commentJson = null
@@ -186,7 +118,6 @@ export default class SPHelper {
     const jsonComments = rawComments ? JSON.parse(rawComments) : [];
     const jsonLikes = rawLikes ? JSON.parse(rawLikes) : [];
 
-    // ✅ Add or update votes
     if (commentJson) {
       let voteEntry = jsonLikes.find((l) => l.commentID === commentJson.id);
 
@@ -222,7 +153,6 @@ export default class SPHelper {
       await this.updateVoteForComment(pageurl, jsonLikes);
     }
 
-    // ✅ Apply votes to comments
     jsonLikes.forEach((likeEntry) => {
       const comment = jsonComments.find((c) => c.id === likeEntry.commentID);
       if (comment) {
@@ -233,372 +163,261 @@ export default class SPHelper {
       }
     });
 
-    // ✅ Resolve and map user info for profile photos
-    const uniqueUserIds = Array.from(new Set<number>(jsonComments.map((c) => c.userid)));
-
-    const userMap = new Map<number, { email: string; upn: string }>();
-
-    for (const userId of uniqueUserIds) {
-      try {
-        const user = await sp.web.siteUsers.getById(userId).get();
-        userMap.set(userId, {
-          email: user.Email,
-          upn: user.UserPrincipalName || user.LoginName,
-        });
-      } catch (err) {
-        console.warn(`⚠️ Could not fetch user with ID ${userId}`, err);
-        userMap.set(userId, {
-          email: "",
-          upn: "",
-        });
-      }
-    }
-
-    // ✅ Attach email/UserPrincipalName to each comment
+    // Add creator name to each comment (removes 'YOU")
     jsonComments.forEach((comment) => {
-      const userInfo = userMap.get(comment.userid);
-      comment.email = userInfo?.email || "";
-      comment.UserPrincipalName = userInfo?.upn || "";
+      comment.creator_name = comment.fullname;
     });
 
     return jsonComments;
   };
 
-  public getComment = async (pageurl) => {
-    let res = await this._list.items
-      .select("Comments", "FieldValuesAsText/Comments")
-      .filter(`PageURL eq '${pageurl}'`)
-      .expand("FieldValuesAsText")
-      .get();
-    return res.length > 0 ? res[0].FieldValuesAsText.Comments : null;
-  };
-
-  public addComment = async (pageUrl, comments) => {
-    const pageName = pageUrl.split("/").pop();
-    return await sp.web.lists.getByTitle(this.lst_pageComments).items.add({
-      Title: pageName,
-      PageURL: pageUrl,
-      Comments: JSON.stringify(comments),
-    });
-  };
-
-  public updateComment = async (pageurl, comments) => {
-    const pageComment = await this._list.items
-      .select("ID")
-      .filter(`PageURL eq '${pageurl}'`)
-      .get();
-
-    if (pageComment.length === 0) return;
-
-    if (comments.length === 0) {
-      return await this._list.items.getById(pageComment[0].ID).delete();
+       public getComment = async (pageurl) => {
+        let pagecomments = await this._list.items.select('Comments', 'FieldValuesAsText/Comments')
+            .filter(`PageURL eq '${pageurl}'`).expand('FieldValuesAsText').get();
+        if (pagecomments.length > 0) return pagecomments[0].FieldValuesAsText.Comments;
+        else return null;
     }
 
-    return await this._list.items.getById(pageComment[0].ID).update({
-      Comments: JSON.stringify(comments),
-    });
-  };
-
-  public postComment = async (
-    pageurl: string,
-    commentJson: any,
-    currentUserInfo: any
-  ) => {
-    commentJson.userid = currentUserInfo.ID;
-    commentJson.fullname = currentUserInfo.DisplayName;
-    commentJson.created_by_current_user = true;
-
-    let comments = await this.getPostComments(pageurl, currentUserInfo);
-    comments.push(commentJson);
-
-    if (comments.length === 1) {
-      return await this.addComment(pageurl, comments);
-    } else {
-      return await this.updateComment(pageurl, comments);
-    }
-  };
-
-  public voteComment = async (pageurl, commentJson, currentUserInfo) => {
-    const res = await this._list.items
-      .select("Likes", "FieldValuesAsText/Likes")
-      .filter(`PageURL eq '${pageurl}'`)
-      .expand("FieldValuesAsText")
-      .get();
-
-    const jsonLikes = res[0]?.FieldValuesAsText?.Likes
-      ? JSON.parse(res[0].FieldValuesAsText.Likes)
-      : [];
-
-    let voteEntry = jsonLikes.find((l) => l.commentID === commentJson.id);
-    const hasVoted = voteEntry?.userVote?.some(
-      (v) => v.userid === currentUserInfo.ID
-    );
-
-    if (commentJson.user_has_upvoted && !hasVoted) {
-      if (voteEntry) {
-        voteEntry.userVote.push({
-          userid: currentUserInfo.ID,
-          name: currentUserInfo.DisplayName,
+    public addComment = async (pageUrl, comments) => {
+        let pageName = pageUrl.split('/')[pageUrl.split('/').length - 1];
+        let commentsToAdd = await sp.web.lists.getByTitle(this.lst_pageComments).items.add({
+            Title: pageName,
+            PageURL: pageUrl,
+            Comments: JSON.stringify(comments)
         });
-      } else {
-        jsonLikes.push({
-          commentID: commentJson.id,
-          userVote: [
-            { userid: currentUserInfo.ID, name: currentUserInfo.DisplayName },
-          ],
+        return commentsToAdd;
+    }
+
+    public updateComment = async (pageurl, comments) => {
+        let pageComment = await this._list.items.select('ID', 'PageURL').filter(`PageURL eq '${pageurl}'`).get();
+        if (comments.length > 0) {
+            if (pageComment.length > 0) {
+                let pageCommentsToUpdate = await this._list.items.getById(pageComment[0].ID).update({
+                    Comments: JSON.stringify(comments)
+                });
+                return pageCommentsToUpdate;
+            }
+        } else {
+            return await this._list.items.getById(pageComment[0].ID).delete();
+        }
+
+    }
+
+    public postComment = async (pageurl, commentJson, currentUserInfo) => {
+        commentJson.created_by_current_user = false;
+        let comments = await this.getPostComments(pageurl, currentUserInfo);
+        if (comments.length > 0) {
+            comments.push(commentJson);
+            let updateComments = await this.updateComment(pageurl, comments);
+            return updateComments;
+        } else {
+            comments.push(commentJson);
+            let addComments = await this.addComment(pageurl, comments);
+            return addComments;
+        }
+    }
+
+    public addVoteForComment = async (pageurl, commentJson, currentUserInfo) => {
+        var tempLikes = [];
+        tempLikes.push({
+            commentID: commentJson.id,
+            userVote: [{ userid: currentUserInfo.ID, name: currentUserInfo.DisplayName }]
         });
-      }
-    } else if (!commentJson.user_has_upvoted && hasVoted) {
-      voteEntry.userVote = voteEntry.userVote.filter(
-        (v) => v.userid !== currentUserInfo.ID
-      );
+        let pageComment = await this._list.items.select('ID').filter(`PageURL eq '${pageurl}'`).get();
+        if (pageComment.length > 0) {
+            return await this._list.items.getById(pageComment[0].ID).update({ Likes: JSON.stringify(tempLikes) });
+        }
     }
 
-    if (jsonLikes.length > 0) {
-      return await this.updateVoteForComment(pageurl, jsonLikes);
+    public updateVoteForComment = async (pageurl, jsonLikes) => {
+        let pageComment = await this._list.items.select('ID').filter(`PageURL eq '${pageurl}'`).get();
+        if (pageComment.length > 0) {
+            return await this._list.items.getById(pageComment[0].ID).update({ Likes: JSON.stringify(jsonLikes) });
+        }
     }
 
-    return await this.addVoteForComment(pageurl, commentJson, currentUserInfo);
-  };
+    public voteComment = async (pageurl, commentJson, currentUserInfo) => {
+        const res = await this._list.items
+          .select("Likes", "FieldValuesAsText/Likes")
+          .filter(`PageURL eq '${pageurl}'`)
+          .expand("FieldValuesAsText")
+          .get();
 
-  public updateVoteForComment = async (pageurl, jsonLikes) => {
-    const pageComment = await this._list.items
-      .select("ID")
-      .filter(`PageURL eq '${pageurl}'`)
-      .get();
-    if (pageComment.length > 0) {
-      return await this._list.items
-        .getById(pageComment[0].ID)
-        .update({ Likes: JSON.stringify(jsonLikes) });
-    }
-  };
+        if (res.length === 0) return commentJson;
 
-  public addVoteForComment = async (pageurl, commentJson, currentUserInfo) => {
-    const pageComment = await this._list.items
-      .select("ID")
-      .filter(`PageURL eq '${pageurl}'`)
-      .get();
-    if (pageComment.length > 0) {
-      const tempLikes = [
-        {
-          commentID: commentJson.id,
-          userVote: [
-            { userid: currentUserInfo.ID, name: currentUserInfo.DisplayName },
-          ],
-        },
-      ];
-      return await this._list.items
-        .getById(pageComment[0].ID)
-        .update({ Likes: JSON.stringify(tempLikes) });
-    }
-  };
+        const rawLikes = res[0].FieldValuesAsText.Likes;
+        const jsonLikes = rawLikes ? JSON.parse(rawLikes) : [];
 
-  public async isUserInGroup(
-    groupName: string,
-    userId: number
-  ): Promise<boolean> {
-    try {
-      const groupUsers = await sp.web.siteGroups
-        .getByName(groupName)
-        .users.get();
-      return groupUsers.some((user) => user.Id === userId);
-    } catch (error) {
-      console.error(`Error checking group '${groupName}':`, error);
-      return false;
-    }
-  }
+        let voteEntry = jsonLikes.find((l) => l.commentID === commentJson.id);
+
+        if (voteEntry) {
+          const hasVoted = voteEntry.userVote.some(
+            (v) => v.userid === currentUserInfo.ID
+          );
+
+          if (commentJson.user_has_upvoted && !hasVoted) {
+
+            voteEntry.userVote.push({
+              userid: currentUserInfo.ID,
+              name: currentUserInfo.DisplayName,
+            });
+          }
 
 
+          if (!commentJson.user_has_upvoted && hasVoted) {
+            voteEntry.userVote = voteEntry.userVote.filter(
+              (v) => v.userid !== currentUserInfo.ID
+            );
+          }
+        } else if (commentJson.user_has_upvoted) {
+          jsonLikes.push({
 
-  public editComments = async (pageurl, commentJson, currentUserInfo) => {
-    const commentsRaw = await this.getComment(pageurl);
-    if (!commentsRaw) return { error: "No comments found" };
+            commentID: commentJson.id,
+            userVote: [
+              {
+                userid: currentUserInfo.ID,
+                name: currentUserInfo.DisplayName,
+              },
+            ],
+          });
+        }
 
-    const jsonComments = JSON.parse(commentsRaw);
-    const match = jsonComments.find((c) => c.id === commentJson.id);
-    if (!match) return { error: "Comment not found" };
 
-    //const isOwner = match.userid === currentUserInfo.ID;
-    // const isAdmin = await this.isUserInGroup(
-    //   "comment Administer",
-    //   currentUserInfo.ID
-    // );
+        if (jsonLikes.length > 0) {
+          return await this.updateVoteForComment(pageurl, jsonLikes);
+        }
 
-    // if (!isAdmin) {
-    //   return { error: "Unauthorized" };
-    // }
-
-    Object.assign(match, {
-      pings: commentJson.pings,
-      content: commentJson.content,
-      modified: commentJson.modified,
-    });
-
-    await this.updateComment(pageurl, jsonComments);
-    return { success: true };
-  };
-
-  public deleteComment = async (pageurl, commentJson, currentUserInfo) => {
-    const commentsRaw = await this.getComment(pageurl);
-    if (!commentsRaw) return;
-
-    let jsonComments = JSON.parse(commentsRaw);
-
-    // const isOwner = jsonComments.some(
-    //   (c) => c.id === commentJson.id && c.userid === currentUserInfo.ID
-    // );
-
-    // const isAdmin = await this.isUserInGroup(
-    //   "comment Administer",
-    //   currentUserInfo.ID
-    // );
-
-    // if (!isOwner && !isAdmin) return { error: "Unauthorized" };
-
-    // Remove the comment and any replies
-    _.remove(
-      jsonComments,
-      (o: any) => o.id === commentJson.id || o.parent === commentJson.id
-    );
-
-    // Clean up orphaned child comments
-    const validIds = new Set(jsonComments.map((c) => c.id));
-    jsonComments = jsonComments.filter(
-      (c) => !c.parent || validIds.has(c.parent)
-    );
-
-    return await this.updateComment(pageurl, jsonComments);
-  };
-
-  // public editComments = async (pageurl, commentJson, currentUserInfo) => {
-  //   const commentsRaw = await this.getComment(pageurl);
-  //   if (!commentsRaw) return { error: "No comments found" };
-
-  //   const jsonComments = JSON.parse(commentsRaw);
-  //   const match = jsonComments.find((c) => c.id === commentJson.id);
-  //   if (!match) return { error: "Comment not found" };
-
-  //   if (match.userid !== currentUserInfo.ID) {
-  //     return { error: "Unauthorized" };
-  //   }
-
-  //   Object.assign(match, {
-  //     pings: commentJson.pings,
-  //     content: commentJson.content,
-  //     modified: commentJson.modified,
-  //   });
-
-  //   await this.updateComment(pageurl, jsonComments);
-  //   return { success: true };
-  // };
-
-  // public deleteComment = async (pageurl, commentJson, currentUserInfo) => {
-  //   const commentsRaw = await this.getComment(pageurl);
-  //   if (!commentsRaw) return;
-
-  //   let jsonComments = JSON.parse(commentsRaw);
-
-  //   const isOwner = jsonComments.some(
-  //     (c) => c.id === commentJson.id && c.userid === currentUserInfo.ID
-  //   );
-  //   const isAdmin = currentUserInfo.IsSiteAdmin === true;
-
-  //   if (!isOwner && !isAdmin) return { error: "Unauthorized" };
-
-  //   // Remove the comment and any replies
-  //   _.remove(
-  //     jsonComments,
-  //     (o: any) => o.id === commentJson.id || o.parent === commentJson.id
-  //   );
-
-  //   // Clean up orphaned child comments
-  //   const validIds = new Set(jsonComments.map((c) => c.id));
-  //   jsonComments = jsonComments.filter(
-  //     (c) => !c.parent || validIds.has(c.parent)
-  //   );
-
-  //   return await this.updateComment(pageurl, jsonComments);
-  // };
-
-  public createFolder = async (folderPath) => {
-    return await sp.web.folders.add(folderPath);
-  };
-
-  public uploadFileToFolder = async (folderpath, fileinfo) => {
-    return await sp.web
-      .getFolderByServerRelativeUrl(folderpath)
-      .files.add(fileinfo.name, fileinfo.content, true);
-  };
-
-  public postAttachments = async (
-    commentArray: any[],
-    pageFolderExists,
-    postAttachmentPath
-  ): Promise<any> => {
-    if (!pageFolderExists) await this.createFolder(postAttachmentPath);
-    const file = commentArray[0].file;
-    const reader = new FileReader();
-
-    return new Promise((resolve, reject) => {
-      reader.onload = async () => {
-        const contentBuffer = reader.result;
-        const uploadedFile = await this.uploadFileToFolder(postAttachmentPath, {
-          name: file.name,
-          content: contentBuffer,
-        });
-
-        _.set(commentArray[0], "file_id", uploadedFile.data.UniqueId);
-        _.set(
-          commentArray[0],
-          "file_url",
-          `${postAttachmentPath}/${file.name}`
-        );
-
-        // 🛠 ensure userid is set correctly here too
-        commentArray[0].userid =
-          commentArray[0].userid || commentArray[0].currentUser?.ID || -1;
-
-        resolve(commentArray);
+        return await this.addVoteForComment(pageurl, commentJson, currentUserInfo);
       };
 
-      reader.readAsArrayBuffer(file);
-    });
-  };
+    public isUserInAdminGroup = async (): Promise<boolean> => {
+        try {
+            // Get the current user
+            const currentUser = await sp.web.currentUser.get();
 
-  public checkListExists = async (): Promise<boolean> => {
-    try {
-      await sp.web.lists.getByTitle(this.lst_pageComments).get();
-      return true;
-    } catch {
-      const { list } = await sp.web.lists.ensure(this.lst_pageComments);
-      await list.fields.addText("PageURL", 255, { Required: true });
-      await list.fields.addMultilineText(
-        "Comments",
-        6,
-        false,
-        false,
-        false,
-        false,
-        {
-          Required: true,
+            // First try checking if user is site admin
+            if (currentUser.IsSiteAdmin) {
+                return true;
+            }
+
+            // Fallback to checking custom admin group if it exists
+            const adminGroupName = "Comment Administrators";
+            try {
+                const groupUsers = await sp.web.siteGroups.getByName(adminGroupName).users.get();
+                return groupUsers.some(user => user.Id === currentUser.Id);
+            } catch {
+                // Group doesn't exist or other error - just return false
+                return false;
+            }
+        } catch (error) {
+            console.error("Error checking admin status:", error);
+            return false;
         }
-      );
-      await list.fields.addMultilineText(
-        "Likes",
-        6,
-        false,
-        false,
-        false,
-        false,
-        {
-          Required: false,
+    };
+    public deleteComment = async (pageurl, commentJson) => {
+        const currentUser = await this.getCurrentUserInfo();
+        const isAdmin = await this.isUserInAdminGroup();
+
+        // Check if current user is comment creator or admin
+        if (currentUser.ID !== commentJson.userid && !isAdmin) {
+            throw new Error("You don't have permission to delete this comment");
         }
-      );
-      const allItemsView = await list.views.getByTitle("All Items");
-      await allItemsView.fields.add("PageURL");
-      await allItemsView.fields.add("Comments");
-      await allItemsView.fields.add("Likes");
-      return true;
+
+        // Remove the comment from the list of comments for the page
+        let comments = await this.getComment(pageurl);
+        if (comments !== undefined && comments !== null) {
+            var jsonComments = JSON.parse(comments);
+
+            // Get the ID of the comment to be deleted
+            const commentId = commentJson.id;
+
+            // Find all comments that need to be removed (the comment and all its nested replies)
+            const commentsToRemove = new Set();
+
+            // Add the initial comment to the removal set
+            commentsToRemove.add(commentId);
+
+            // Recursively find all replies at any nesting level
+            const findAllReplies = (parentId) => {
+                // Find direct replies to this parent
+                const directReplies = jsonComments.filter(c => c.parent === parentId);
+
+                // Add each direct reply to the removal set and recursively find its replies
+                directReplies.forEach(reply => {
+                    commentsToRemove.add(reply.id);
+                    findAllReplies(reply.id);
+                });
+            };
+
+            // Find all nested replies to the comment being deleted
+            findAllReplies(commentId);
+
+            // Remove all identified comments
+            jsonComments = jsonComments.filter(comment => !commentsToRemove.has(comment.id));
+
+            return await this.updateComment(pageurl, jsonComments);
+        }
+    };
+
+
+    public editComments = async (pageurl, commentJson) => {
+        const currentUser = await this.getCurrentUserInfo();
+        const isAdmin = await this.isUserInAdminGroup();
+
+        // Check if current user is comment creator or admin
+        if (currentUser.ID !== commentJson.userid && !isAdmin) {
+            throw new Error("You don't have permission to edit this comment");
+        }
+
+        let comment = await this.getComment(pageurl);
+        if (comment !== undefined && comment !== null) {
+            var jsonComments = JSON.parse(comment);
+            var match = _.find(jsonComments, (o) => { return o.id == commentJson.id; });
+            if (match) _.merge(match, { pings: commentJson.pings, content: commentJson.content, modified: commentJson.modified });
+            return await this.updateComment(pageurl, jsonComments);
+        }
     }
-  };
+
+    public createFolder = async (folderPath) => {
+        return await sp.web.folders.add(folderPath);
+    }
+
+    public uploadFileToFolder = async (folderpath, fileinfo) => {
+        return await sp.web.getFolderByServerRelativeUrl(folderpath).files.add(fileinfo.name, fileinfo.content, true);
+    }
+
+    public postAttachments = async (commentArray: any[], pageFolderExists, postAttachmentPath): Promise<any> => {
+        var self = this;
+        return new Promise(async (resolve, reject) => {
+            if (!pageFolderExists) await this.createFolder(postAttachmentPath);
+            var reader = new FileReader();
+            reader.onload = async () => {
+                var contentBuffer = reader.result;
+                let uploadedFile = await self.uploadFileToFolder(postAttachmentPath, { name: commentArray[0].file.name, content: contentBuffer });
+                _.set(commentArray[0], 'file_id', uploadedFile.data.UniqueId);
+                _.set(commentArray[0], 'file_url', postAttachmentPath + "/" + commentArray[0].file.name);
+                resolve(commentArray);
+            };
+            await reader.readAsArrayBuffer(commentArray[0].file);
+        });
+    }
+
+    public checkListExists = async (): Promise<boolean> => {
+        return new Promise<boolean>(async (res, rej) => {
+            sp.web.lists.getByTitle(this.lst_pageComments).get().then((listExists) => {
+                res(true);
+            }).catch(async err => {
+                let listExists = await (await sp.web.lists.ensure(this.lst_pageComments)).list;
+                await listExists.fields.addText('PageURL', 255, { Required: true, Description: '' });
+                await listExists.fields.addMultilineText('Comments', 6, false, false, false, false, { Required: true, Description: '' });
+                await listExists.fields.addMultilineText('Likes', 6, false, false, false, false, { Required: false, Description: '' });
+                let allItemsView = await listExists.views.getByTitle('All Items');
+                await allItemsView.fields.add('PageURL');
+                await allItemsView.fields.add('Comments');
+                await allItemsView.fields.add('Likes');
+                res(true);
+            });
+        });
+    }
+
 }
